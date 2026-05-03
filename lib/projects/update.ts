@@ -90,3 +90,26 @@ export async function deleteProject(projectId: string) {
 
   if (error) throw error;
 }
+
+/**
+ * Transfer project ownership to another member.
+ * Demotes current owner to "lead", promotes new member to "owner".
+ */
+export async function transferProjectOwnership(
+  currentOwnerMemberId: string,
+  newOwnerMemberId: string
+) {
+  const { error: demoteError } = await (supabase as any)
+    .from("project_members")
+    .update({ role: "lead" })
+    .eq("id", currentOwnerMemberId);
+
+  if (demoteError) throw demoteError;
+
+  const { error: promoteError } = await (supabase as any)
+    .from("project_members")
+    .update({ role: "owner" })
+    .eq("id", newOwnerMemberId);
+
+  if (promoteError) throw promoteError;
+}

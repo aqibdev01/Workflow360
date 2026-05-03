@@ -575,7 +575,7 @@ export async function getProjectMembersForAssignment(projectId: string) {
 export async function getUserProjectRole(projectId: string, userId: string) {
   const { data, error } = await supabase
     .from("project_members")
-    .select("role, custom_role")
+    .select("id, role, custom_role")
     .eq("project_id", projectId)
     .eq("user_id", userId)
     .single();

@@ -387,7 +387,7 @@ function ProjectDashboardContent() {
 
   // User and permissions state
   const [currentUserId, setCurrentUserId] = useState<string>("");
-  const [userRole, setUserRole] = useState<{ role: string; custom_role: string | null } | null>(null);
+  const [userRole, setUserRole] = useState<{ id: string; role: string; custom_role: string | null } | null>(null);
 
   // Calendar → Kanban highlight
   const [highlightTaskId, setHighlightTaskId] = useState<string | null>(null);
@@ -2214,6 +2214,8 @@ const roleIcons: { [key: string]: any } = {
                   <ProjectDangerZone
                     project={project}
                     isOwner={isProjectManager}
+                    currentUserMemberId={userRole?.id}
+                    members={project.project_members || []}
                     onUpdated={() => loadProjectData(currentUserId)}
                   />
                 </CardContent>
