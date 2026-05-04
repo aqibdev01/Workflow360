@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback, useRef, useEffect } from "react";
-import { useParams, useSearchParams } from "next/navigation";
+import { useParams, useSearchParams, useRouter } from "next/navigation";
 import {
   Upload,
   LayoutGrid,
@@ -54,11 +54,21 @@ import { getFilesSharedWithMe } from "@/lib/files/sharing";
 // Main Page
 // =====================================================
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export default function OrgFilesPage() {
   const params = useParams();
   const searchParams = useSearchParams();
+  const router = useRouter();
   const orgId = params.orgId as string;
   const { user } = useAuth();
+
+  // Guard against non-UUID route params (e.g. /organizations/new/files)
+  useEffect(() => {
+    if (!UUID_RE.test(orgId)) {
+      router.replace("/dashboard/organizations");
+    }
+  }, [orgId, router]);
 
   useBreadcrumbs([
     { label: "Organizations", href: "/dashboard/organizations" },

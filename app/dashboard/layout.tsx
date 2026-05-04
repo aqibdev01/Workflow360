@@ -60,9 +60,12 @@ const baseNavigation = [
   },
 ];
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 function getNavigation(pathname: string) {
   const orgMatch = pathname.match(/\/dashboard\/organizations\/([^/]+)/);
-  const orgId = orgMatch ? orgMatch[1] : null;
+  const orgIdRaw = orgMatch ? orgMatch[1] : null;
+  const orgId = orgIdRaw && UUID_RE.test(orgIdRaw) ? orgIdRaw : null;
 
   const orgNavItems = orgId
     ? [
@@ -116,7 +119,7 @@ export default function DashboardLayout({
 
   // Extract orgId from path for notification bell
   const orgMatch = pathname.match(/\/dashboard\/organizations\/([^/]+)/);
-  const currentOrgId = orgMatch ? orgMatch[1] : null;
+  const currentOrgId = orgMatch && UUID_RE.test(orgMatch[1]) ? orgMatch[1] : null;
 
   // System alerts
   const [alerts] = useState<AlertItem[]>([]);
