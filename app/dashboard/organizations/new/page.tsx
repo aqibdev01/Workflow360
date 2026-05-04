@@ -24,7 +24,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { useAuth } from "@/hooks/useAuth";
-import { createOrganization, addOrganizationMember, searchUsersByEmail } from "@/lib/database";
+import { createOrganization, addOrganizationMember, searchUsersByEmail, getOrCreateUserProfile } from "@/lib/database";
 import { generateInviteCode } from "@/lib/utils";
 
 // Validation schemas for each step
@@ -174,6 +174,14 @@ export default function NewOrganizationPage() {
     setIsCreating(true);
 
     try {
+      // Ensure public.users row exists — signup profile creation is fire-and-forget
+      // and may not have completed before reaching this point
+      await getOrCreateUserProfile(
+        user.id,
+        user.email!,
+        (user as any).user_metadata?.full_name
+      );
+
       // Create organization with the generated invite code
       const newOrg = await createOrganization({
         name: data.name,
