@@ -1,4 +1,4 @@
-import { createClient } from "@supabase/supabase-js";
+import { createBrowserClient } from "@supabase/ssr";
 import { Database } from "@/types/database";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
@@ -29,8 +29,8 @@ if (isPlaceholder) {
   `);
 }
 
-// Create a typed Supabase client
-export const supabase = createClient<Database>(
+// Create a typed Supabase client (cookie-based storage so server middleware can read the session)
+export const supabase = createBrowserClient<Database>(
   supabaseUrl || "https://placeholder.supabase.co",
   supabaseAnonKey || "placeholder-key"
 );
