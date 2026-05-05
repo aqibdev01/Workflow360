@@ -2,15 +2,13 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   LayoutDashboard,
   Building2,
   BarChart3,
   CalendarDays,
-  MessageSquare,
   Files,
-  Mail,
   Menu,
   X,
   LogOut,
@@ -20,13 +18,12 @@ import {
   PanelLeft,
   Home,
   Search,
-  Sparkles,
   Brain,
-  AlertTriangle,
-  ChevronRight,
-  ChevronsUpDown,
   Sun,
   Moon,
+  Kanban,
+  Users,
+  Zap,
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { signOut } from "@/lib/auth";
@@ -45,7 +42,15 @@ import { Logo } from "@/components/Logo";
 import { BreadcrumbProvider, BreadcrumbNav } from "@/components/breadcrumbs";
 import { NotificationBell } from "@/components/notifications/NotificationBell";
 
-const baseNavigation = [
+type NavItem = {
+  name: string;
+  href: string;
+  icon: React.ComponentType<{ className?: string }>;
+  comingSoon: boolean;
+  tab?: string;
+};
+
+const baseNavigation: NavItem[] = [
   {
     name: "Home",
     href: "/dashboard",
@@ -63,46 +68,24 @@ const baseNavigation = [
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function getNavigation(pathname: string) {
-  const orgMatch = pathname.match(/\/dashboard\/organizations\/([^/]+)/);
-  const orgIdRaw = orgMatch ? orgMatch[1] : null;
-  const orgId = orgIdRaw && UUID_RE.test(orgIdRaw) ? orgIdRaw : null;
+  const projectMatch = pathname.match(/\/dashboard\/projects\/([^/]+)/);
+  const projectIdRaw = projectMatch ? projectMatch[1] : null;
+  const projectId = projectIdRaw && UUID_RE.test(projectIdRaw) ? projectIdRaw : null;
 
-  const orgNavItems = orgId
+  const projectNavItems: NavItem[] = projectId
     ? [
-        {
-          name: "Calendar",
-          href: "/dashboard/calendar",
-          icon: CalendarDays,
-          comingSoon: false,
-        },
-        {
-          name: "Reports",
-          href: "/dashboard/analytics",
-          icon: BarChart3,
-          comingSoon: false,
-        },
-        {
-          name: "Messages",
-          href: `/dashboard/organizations/${orgId}/communication`,
-          icon: MessageSquare,
-          comingSoon: false,
-        },
-        {
-          name: "Files",
-          href: `/dashboard/organizations/${orgId}/files`,
-          icon: Files,
-          comingSoon: false,
-        },
-        {
-          name: "Mail",
-          href: `/dashboard/organizations/${orgId}/mail`,
-          icon: Mail,
-          comingSoon: false,
-        },
+        { name: "Kanban Board", href: `/dashboard/projects/${projectId}?tab=kanban`, icon: Kanban, comingSoon: false, tab: "kanban" },
+        { name: "Sprints", href: `/dashboard/projects/${projectId}?tab=sprints`, icon: Zap, comingSoon: false, tab: "sprints" },
+        { name: "Team", href: `/dashboard/projects/${projectId}?tab=team`, icon: Users, comingSoon: false, tab: "team" },
+        { name: "Analytics", href: `/dashboard/projects/${projectId}?tab=analytics`, icon: BarChart3, comingSoon: false, tab: "analytics" },
+        { name: "Files", href: `/dashboard/projects/${projectId}?tab=files`, icon: Files, comingSoon: false, tab: "files" },
+        { name: "Calendar", href: `/dashboard/projects/${projectId}?tab=calendar`, icon: CalendarDays, comingSoon: false, tab: "calendar" },
+        { name: "AI Optimizer", href: `/dashboard/projects/${projectId}?tab=ai-optimizer`, icon: Brain, comingSoon: false, tab: "ai-optimizer" },
+        { name: "Settings", href: `/dashboard/projects/${projectId}?tab=settings`, icon: Settings, comingSoon: false, tab: "settings" },
       ]
     : [];
 
-  return [...baseNavigation, ...orgNavItems];
+  return { general: baseNavigation, project: projectNavItems, projectId };
 }
 
 export default function DashboardLayout({
@@ -112,6 +95,7 @@ export default function DashboardLayout({
 }) {
   const pathname = usePathname();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { user, userProfile } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -120,6 +104,8 @@ export default function DashboardLayout({
   // Extract orgId from path for notification bell
   const orgMatch = pathname.match(/\/dashboard\/organizations\/([^/]+)/);
   const currentOrgId = orgMatch && UUID_RE.test(orgMatch[1]) ? orgMatch[1] : null;
+
+  const currentTab = searchParams?.get("tab") || "overview";
 
   // System alerts
   const [alerts] = useState<AlertItem[]>([]);
@@ -163,7 +149,21 @@ export default function DashboardLayout({
     }
   };
 
-  const navItems = getNavigation(pathname);
+  const { general: generalItems, project: projectItems, projectId: currentProjectId } = getNavigation(pathname);
+
+  const getIsActive = (item: NavItem) => {
+    if (item.tab && currentProjectId) {
+      return pathname.startsWith(`/dashboard/projects/${currentProjectId}`) && currentTab === item.tab;
+    }
+    if (item.href === "/dashboard") return pathname === "/dashboard";
+    if (item.href === "/dashboard/organizations") {
+      return (
+        pathname === "/dashboard/organizations" ||
+        (pathname.startsWith("/dashboard/organizations/") && !pathname.startsWith("/dashboard/projects/"))
+      );
+    }
+    return pathname.startsWith(item.href);
+  };
 
   return (
     <BreadcrumbProvider>
@@ -238,41 +238,9 @@ export default function DashboardLayout({
                 </label>
               )}
               <div className="space-y-0.5">
-                {navItems.map((item) => {
-                  const isActive =
-                    item.href === "/dashboard"
-                      ? pathname === "/dashboard"
-                      : item.href === "/dashboard/organizations"
-                        ? pathname === "/dashboard/organizations" ||
-                          (pathname.startsWith("/dashboard/organizations/") &&
-                            !pathname.includes("/communication") &&
-                            !pathname.includes("/files") &&
-                            !pathname.includes("/mail"))
-                        : pathname.startsWith(item.href);
+                {generalItems.map((item) => {
+                  const isActive = getIsActive(item);
                   const Icon = item.icon;
-
-                  if (item.comingSoon) {
-                    return (
-                      <div
-                        key={item.name}
-                        className={`flex items-center ${
-                          sidebarCollapsed ? "justify-center" : ""
-                        } gap-3 px-3 py-2 text-sm text-slate-400 cursor-not-allowed rounded-lg`}
-                        title={sidebarCollapsed ? `${item.name} - Coming Soon` : undefined}
-                      >
-                        <Icon className="h-5 w-5 shrink-0" />
-                        {!sidebarCollapsed && (
-                          <span className="text-sm">{item.name}</span>
-                        )}
-                        {!sidebarCollapsed && (
-                          <span className="ml-auto text-[9px] bg-violet-100 dark:bg-violet-900/30 text-violet-600 dark:text-violet-400 px-1.5 py-0.5 rounded-full font-bold">
-                            Soon
-                          </span>
-                        )}
-                      </div>
-                    );
-                  }
-
                   return (
                     <Link
                       key={item.name}
@@ -294,6 +262,62 @@ export default function DashboardLayout({
                 })}
               </div>
             </div>
+
+            {/* Project Section — only shown when inside a project */}
+            {projectItems.length > 0 && (
+              <div>
+                {!sidebarCollapsed && (
+                  <label className="px-3 text-[0.625rem] font-bold uppercase text-slate-400 tracking-widest mb-2 block">
+                    Project
+                  </label>
+                )}
+                <div className="space-y-0.5">
+                  {projectItems.map((item) => {
+                    const isActive = getIsActive(item);
+                    const Icon = item.icon;
+
+                    if (item.comingSoon) {
+                      return (
+                        <div
+                          key={item.name}
+                          className={`flex items-center ${
+                            sidebarCollapsed ? "justify-center" : ""
+                          } gap-3 px-3 py-2 text-sm text-slate-400 cursor-not-allowed rounded-lg`}
+                          title={sidebarCollapsed ? `${item.name} - Coming Soon` : undefined}
+                        >
+                          <Icon className="h-5 w-5 shrink-0" />
+                          {!sidebarCollapsed && <span className="text-sm">{item.name}</span>}
+                          {!sidebarCollapsed && (
+                            <span className="ml-auto text-[9px] bg-violet-100 dark:bg-violet-900/30 text-violet-600 dark:text-violet-400 px-1.5 py-0.5 rounded-full font-bold">
+                              Soon
+                            </span>
+                          )}
+                        </div>
+                      );
+                    }
+
+                    return (
+                      <Link
+                        key={item.name}
+                        href={item.href}
+                        onClick={() => setSidebarOpen(false)}
+                        className={`flex items-center ${
+                          sidebarCollapsed ? "justify-center" : ""
+                        } gap-3 px-3 py-2 text-sm font-medium rounded-lg transition-colors duration-200 ${
+                          isActive
+                            ? "text-indigo-700 dark:text-indigo-300 bg-white dark:bg-slate-800 font-bold shadow-sm"
+                            : "text-slate-500 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-300 hover:bg-slate-200/50 dark:hover:bg-slate-800/50"
+                        }`}
+                        title={sidebarCollapsed ? item.name : undefined}
+                      >
+                        <Icon className="h-5 w-5 shrink-0" />
+                        {!sidebarCollapsed && <span>{item.name}</span>}
+                      </Link>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </nav>
 
           {/* Footer — User Profile */}

@@ -1157,14 +1157,15 @@ const roleIcons: { [key: string]: any } = {
                   ) : null;
                 })()}
               </Button>
-              <Button
-                className="gap-2"
-                onClick={() => openCreateTaskDialog()}
-                disabled={!isProjectManager}
-              >
-                <Plus className="h-4 w-4" />
-                Add Task
-              </Button>
+              {isProjectManager && (
+                <Button
+                  className="gap-2"
+                  onClick={() => openCreateTaskDialog()}
+                >
+                  <Plus className="h-4 w-4" />
+                  Add Task
+                </Button>
+              )}
             </div>
           </div>
 
@@ -1224,25 +1225,27 @@ const roleIcons: { [key: string]: any } = {
                 setActiveDragTaskId(null);
               }}
             >
-              {/* Priority Card Tray */}
-              <div className={`bg-white dark:bg-slate-800/50 border-2 border-dashed rounded-xl p-4 shadow-sm transition-all ${
-                activeDragPriority ? "border-indigo-500/40 bg-indigo-500/[0.02]" : "border-gray-200 dark:border-slate-700"
-              }`}>
-                <div className="flex items-center gap-3 mb-3">
-                  <div className="h-8 w-8 rounded-lg bg-indigo-500/10 flex items-center justify-center">
-                    <Layers className="h-4 w-4 text-indigo-500" />
+              {/* Priority Card Tray — project managers only */}
+              {isProjectManager && (
+                <div className={`bg-white dark:bg-slate-800/50 border-2 border-dashed rounded-xl p-4 shadow-sm transition-all ${
+                  activeDragPriority ? "border-indigo-500/40 bg-indigo-500/[0.02]" : "border-gray-200 dark:border-slate-700"
+                }`}>
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className="h-8 w-8 rounded-lg bg-indigo-500/10 flex items-center justify-center">
+                      <Layers className="h-4 w-4 text-indigo-500" />
+                    </div>
+                    <div>
+                      <span className="text-sm font-semibold text-foreground">Quick Add</span>
+                      <p className="text-xs text-muted-foreground">Pick a priority card and drop it on the board to create a task</p>
+                    </div>
                   </div>
-                  <div>
-                    <span className="text-sm font-semibold text-foreground">Quick Add</span>
-                    <p className="text-xs text-muted-foreground">Pick a priority card and drop it on the board to create a task</p>
+                  <div className="flex items-center gap-4">
+                    <PriorityDragCard priority="low" color="#6b7280" bgColor="bg-gray-50 dark:bg-slate-700" borderColor="#d1d5db" label="Low" icon="🟢" />
+                    <PriorityDragCard priority="medium" color="#3b82f6" bgColor="bg-blue-50 dark:bg-blue-950/30" borderColor="#93c5fd" label="Medium" icon="🟡" />
+                    <PriorityDragCard priority="high" color="#f97316" bgColor="bg-orange-50 dark:bg-orange-950/30" borderColor="#fdba74" label="High" icon="🔴" />
                   </div>
                 </div>
-                <div className="flex items-center gap-4">
-                  <PriorityDragCard priority="low" color="#6b7280" bgColor="bg-gray-50 dark:bg-slate-700" borderColor="#d1d5db" label="Low" icon="🟢" />
-                  <PriorityDragCard priority="medium" color="#3b82f6" bgColor="bg-blue-50 dark:bg-blue-950/30" borderColor="#93c5fd" label="Medium" icon="🟡" />
-                  <PriorityDragCard priority="high" color="#f97316" bgColor="bg-orange-50 dark:bg-orange-950/30" borderColor="#fdba74" label="High" icon="🔴" />
-                </div>
-              </div>
+              )}
 
               {/* Delete zone — only visible when dragging a task */}
               {activeDragTaskId && (

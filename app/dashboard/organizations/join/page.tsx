@@ -20,7 +20,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useAuth } from "@/hooks/useAuth";
 import { joinOrganizationByInviteCode, getOrganizationMembers } from "@/lib/database";
-import { notifyMemberJoined } from "@/lib/notifications/triggers";
+import { notifyJoinRequested } from "@/lib/notifications/triggers";
 
 // Validation schema
 const joinCodeSchema = z.object({
@@ -68,28 +68,31 @@ export default function JoinOrganizationPage() {
         return;
       }
 
-      toast.success("Successfully joined!", {
-        description: `You've been added to ${result.org_name}.`,
+      toast.success("Request sent!", {
+        description: `Your request to join ${result.org_name} has been submitted. You'll be notified once the owner reviews it.`,
       });
 
-      // Notify existing org members
+      // Notify org admins / managers about the incoming request
       if (result.org_id) {
         getOrganizationMembers(result.org_id).then((members) => {
-          const otherMemberIds = (members || [])
+          const adminIds = (members || [])
+            .filter((m: any) => m.role === "admin" || m.role === "manager")
             .map((m: any) => m.users?.id)
             .filter((id: string) => id && id !== user.id);
-          const memberName = userProfile?.full_name || user.email?.split("@")[0] || "A new member";
-          notifyMemberJoined(result.org_id!, { id: user.id, name: memberName }, otherMemberIds).catch(() => {});
+          const requesterName = userProfile?.full_name || user.email?.split("@")[0] || "Someone";
+          notifyJoinRequested(result.org_id!, { id: user.id, name: requesterName }, adminIds).catch(() => {});
         }).catch(() => {});
       }
 
       reset();
 
-      // Redirect to organization dashboard
+      setIsJoining(false);
+
+      // Stay on dashboard — user is not yet a member
       setTimeout(() => {
-        router.push(`/dashboard/organizations/${result.org_id}`);
+        router.push("/dashboard");
         router.refresh();
-      }, 1000);
+      }, 2000);
     } catch (error: any) {
       console.error("Error joining organization:", error);
       toast.error("Failed to join organization", {
@@ -116,7 +119,7 @@ export default function JoinOrganizationPage() {
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Join Organization</h1>
         <p className="text-muted-foreground mt-2">
-          Enter an invite code to join an existing organization
+          Enter an invite code to request membership in an organization
         </p>
       </div>
 
@@ -155,11 +158,11 @@ export default function JoinOrganizationPage() {
                   {isJoining ? (
                     <>
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Joining...
+                      Sending...
                     </>
                   ) : (
                     <>
-                      Join
+                      Request to Join
                       <ArrowRight className="ml-2 h-4 w-4" />
                     </>
                   )}
@@ -171,8 +174,7 @@ export default function JoinOrganizationPage() {
               <Info className="h-5 w-5 text-muted-foreground flex-shrink-0 mt-0.5" />
               <div className="space-y-1">
                 <p className="text-sm text-muted-foreground">
-                  Invite codes are case-insensitive. You can find the invite code on
-                  the organization's dashboard or ask the organization owner to share it with you.
+                  Invite codes are case-insensitive. Submitting a code sends a membership request — the organization owner or manager must approve it before you can access the workspace.
                 </p>
               </div>
             </div>

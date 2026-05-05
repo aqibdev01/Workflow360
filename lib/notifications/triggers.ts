@@ -279,3 +279,45 @@ export async function notifyMemberJoined(
     }).catch(() => {});
   }
 }
+
+export async function notifyJoinRequested(
+  orgId: string,
+  requester: { id: string; name: string },
+  adminUserIds: string[]
+): Promise<void> {
+  for (const userId of adminUserIds) {
+    if (userId === requester.id) continue;
+
+    await createNotification({
+      orgId,
+      userId,
+      type: "member_joined",
+      title: "New membership request",
+      body: `${requester.name} wants to join your organization`,
+      link: `/dashboard/organizations/${orgId}?tab=members`,
+      metadata: {
+        requesterId: requester.id,
+        requesterName: requester.name,
+      },
+    }).catch(() => {});
+  }
+}
+
+export async function notifyJoinRequestReviewed(
+  orgId: string,
+  userId: string,
+  orgName: string,
+  approved: boolean
+): Promise<void> {
+  await createNotification({
+    orgId,
+    userId,
+    type: "member_joined",
+    title: approved ? "Join request approved" : "Join request declined",
+    body: approved
+      ? `You've been added to ${orgName}`
+      : `Your request to join ${orgName} was declined`,
+    link: approved ? `/dashboard/organizations/${orgId}` : `/dashboard`,
+    metadata: { orgId, orgName, approved },
+  }).catch(() => {});
+}
