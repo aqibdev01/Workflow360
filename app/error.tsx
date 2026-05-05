@@ -1,7 +1,5 @@
 "use client";
 
-import Link from "next/link";
-
 export default function Error({
   error,
   reset,
@@ -49,17 +47,17 @@ export default function Error({
 
             <div className="pt-8 flex flex-col sm:flex-row items-center justify-center gap-4">
               <button
-                onClick={reset}
+                onClick={() => window.location.reload()}
                 className="px-8 py-4 bg-gradient-to-r from-indigo-600 to-violet-600 text-white rounded-lg font-bold tracking-tight shadow-xl shadow-indigo-500/20 active:scale-95 transition-all"
               >
-                Try Again
+                Reload Page
               </button>
-              <Link
+              <a
                 href="/dashboard"
                 className="px-8 py-4 bg-slate-100 dark:bg-slate-800 text-foreground rounded-lg font-bold tracking-tight hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors active:scale-95"
               >
-                Go to Dashboard
-              </Link>
+                Back to Dashboard
+              </a>
             </div>
           </div>
         </div>

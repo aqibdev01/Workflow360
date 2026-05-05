@@ -1179,8 +1179,7 @@ const roleIcons: { [key: string]: any } = {
           )}
 
           {/* Kanban Board with Drag-and-Drop */}
-          {visibleTasks.length > 0 && (
-            <DndContext
+          <DndContext
               sensors={sensors}
               onDragStart={(event: DragStartEvent) => {
                 const id = event.active.id as string;
@@ -1250,19 +1249,6 @@ const roleIcons: { [key: string]: any } = {
               )}
 
               <BoardDropZone active={!!activeDragPriority}>
-                {visibleTasks.length === 0 ? (
-                  <Card className={`transition-all ${activeDragPriority ? "ring-2 ring-indigo-500/30 ring-dashed" : ""}`}>
-                    <CardContent className="flex flex-col items-center justify-center py-12">
-                      <LayoutGrid className="h-12 w-12 text-muted-foreground mb-4" />
-                      <h3 className="text-lg font-semibold mb-2">No Tasks Yet</h3>
-                      <p className="text-sm text-muted-foreground mb-4">
-                        {activeDragPriority
-                          ? "Drop here to create your first task!"
-                          : "Drag a card from above or click Add Task to get started"}
-                      </p>
-                    </CardContent>
-                  </Card>
-                ) : (
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                     {["todo", "in_progress", "review", "done"].map((status) => {
                       const statusTasks = visibleTasks.filter((t) => t.status === status);
@@ -1291,6 +1277,20 @@ const roleIcons: { [key: string]: any } = {
                               </div>
                             </CardHeader>
                             <CardContent className="flex-1 space-y-3 overflow-y-auto">
+                              {statusTasks.length === 0 && (
+                                <button
+                                  onClick={() => isProjectManager ? openCreateTaskDialog(undefined, undefined, status) : undefined}
+                                  disabled={!isProjectManager}
+                                  className="w-full border-2 border-dashed border-muted-foreground/20 rounded-lg p-6 flex flex-col items-center gap-2.5 text-muted-foreground hover:border-primary/40 hover:text-primary/70 hover:bg-primary/5 transition-all group disabled:cursor-default disabled:opacity-40"
+                                >
+                                  <div className="h-9 w-9 rounded-full border-2 border-dashed border-current flex items-center justify-center group-hover:border-primary/50 transition-colors">
+                                    <Plus className="h-4 w-4" />
+                                  </div>
+                                  <span className="text-xs font-medium">
+                                    {isProjectManager ? "Add a task" : "No tasks yet"}
+                                  </span>
+                                </button>
+                              )}
                               {statusTasks.map((task) => {
                                 const canMoveTask = isProjectManager || task.assignee_id === currentUserId || task.assignee?.id === currentUserId || task.created_by === currentUserId || (task.created_by_user?.id === currentUserId);
                                 const isHighlighted = task.id === highlightTaskId;
@@ -1430,7 +1430,6 @@ const roleIcons: { [key: string]: any } = {
                       );
                     })}
                   </div>
-                )}
               </BoardDropZone>
 
               {/* Drag Overlay */}
@@ -1464,7 +1463,6 @@ const roleIcons: { [key: string]: any } = {
                 })() : null}
               </DragOverlay>
             </DndContext>
-          )}
 
           {/* Delete Confirmation Dialog */}
           {deleteConfirmTaskId && (() => {
@@ -1864,6 +1862,8 @@ const roleIcons: { [key: string]: any } = {
                   open={sprintEventDialogOpen}
                   onOpenChange={setSprintEventDialogOpen}
                   sprintId={selectedSprint.id}
+                  sprintStartDate={selectedSprint.start_date}
+                  sprintEndDate={selectedSprint.end_date}
                   projectId={projectId}
                   currentUserId={currentUserId}
                   event={editingSprintEvent}
@@ -2050,6 +2050,8 @@ const roleIcons: { [key: string]: any } = {
             open={sprintDialogOpen}
             onOpenChange={setSprintDialogOpen}
             projectId={projectId}
+            projectStartDate={project?.start_date}
+            projectEndDate={project?.end_date}
             sprint={editingSprint}
             isProjectManager={isProjectManager}
             onSprintCreated={refreshSprints}
