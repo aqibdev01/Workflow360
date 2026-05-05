@@ -62,6 +62,7 @@ import {
   updateSprint,
   getSprintEvents,
 } from "@/lib/database";
+import { supabase } from "@/lib/supabase";
 import { TaskDialog } from "@/components/task-dialog";
 import {
   Dialog,
@@ -446,9 +447,9 @@ const roleIcons: { [key: string]: any } = {
       label: project?.name || "…",
       href: `/dashboard/projects/${projectId}`,
     });
-    breadcrumbs.push({ label: tabLabels[activeTab] });
+    breadcrumbs.push({ label: tabLabels[activeTab], href: undefined });
   } else {
-    breadcrumbs.push({ label: project?.name || "…" });
+    breadcrumbs.push({ label: project?.name || "…", href: undefined });
   }
 
   useBreadcrumbs(breadcrumbs);
@@ -785,9 +786,9 @@ const roleIcons: { [key: string]: any } = {
           </div>
           <Badge
             variant="outline"
-            className={`${statusConfig[project.status as keyof typeof statusConfig].color} border`}
+            className={`${statusConfig[project.status as keyof typeof statusConfig]?.color} border`}
           >
-            {statusConfig[project.status as keyof typeof statusConfig].label}
+            {statusConfig[project.status as keyof typeof statusConfig]?.label || project.status}
           </Badge>
         </div>
 
@@ -1317,7 +1318,7 @@ const roleIcons: { [key: string]: any } = {
                                         <div className="flex items-start justify-between gap-2">
                                           <div className="flex items-center gap-1.5 flex-1 min-w-0">
                                             {task.is_ai_generated && (
-                                              <Sparkles className="h-3 w-3 text-purple-400 shrink-0" title="AI generated" />
+                                              <span title="AI generated"><Sparkles className="h-3 w-3 text-purple-400 shrink-0" /></span>
                                             )}
                                             <h5 className="font-medium text-sm leading-tight line-clamp-2 flex-1">
                                               {task.title}
@@ -1679,7 +1680,7 @@ const roleIcons: { [key: string]: any } = {
                         <div className="flex items-center gap-1.5">
                           <p className="text-sm">{viewingTask.assignee.full_name || viewingTask.assignee.email}</p>
                           {viewingTask.ai_suggested_assignee_id === viewingTask.assignee_id && (
-                            <Sparkles className="h-3 w-3 text-purple-500" title="AI suggested" />
+                            <span title="AI suggested"><Sparkles className="h-3 w-3 text-purple-500" /></span>
                           )}
                         </div>
                       ) : (
@@ -1719,7 +1720,7 @@ const roleIcons: { [key: string]: any } = {
                           ai_suggested_assignee_id: userId,
                         } : null);
                         // Update in DB
-                        supabase
+                        (supabase as any)
                           .from("tasks")
                           .update({ assignee_id: userId, ai_suggested_assignee_id: userId })
                           .eq("id", viewingTask.id)
