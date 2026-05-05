@@ -278,6 +278,7 @@ export async function getProjectDetails(projectId: string) {
       organizations(id, name),
       project_members(
         id,
+        user_id,
         role,
         custom_role,
         assigned_at,
