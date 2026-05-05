@@ -72,6 +72,8 @@ interface SprintDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   projectId: string;
+  projectStartDate?: string | null;
+  projectEndDate?: string | null;
   sprint?: {
     id: string;
     name: string;
@@ -90,6 +92,8 @@ export function SprintDialog({
   open,
   onOpenChange,
   projectId,
+  projectStartDate,
+  projectEndDate,
   sprint,
   isProjectManager,
   onSprintCreated,
@@ -188,6 +192,10 @@ export function SprintDialog({
 
   const canEdit = isProjectManager;
   const canDelete = isProjectManager && isEditing && sprint?.status === "planned";
+
+  // Project date boundaries (strip time so day comparisons are inclusive)
+  const projectStart = projectStartDate ? (() => { const d = new Date(projectStartDate); d.setHours(0,0,0,0); return d; })() : null;
+  const projectEnd = projectEndDate ? (() => { const d = new Date(projectEndDate); d.setHours(23,59,59,999); return d; })() : null;
 
   // Calculate sprint duration
   const startDate = form.watch("start_date");
@@ -335,7 +343,10 @@ export function SprintDialog({
                               const yesterday = new Date();
                               yesterday.setDate(yesterday.getDate() - 1);
                               yesterday.setHours(23, 59, 59, 999);
-                              return date < yesterday;
+                              if (date < yesterday) return true;
+                              if (projectStart && date < projectStart) return true;
+                              if (projectEnd && date > projectEnd) return true;
+                              return false;
                             }}
                             initialFocus
                           />
@@ -378,11 +389,12 @@ export function SprintDialog({
                             selected={field.value}
                             onSelect={field.onChange}
                             disabled={(date) => {
-                              // End date must be at least 1 day after start date
                               const minEndDate = new Date(startDate);
                               minEndDate.setDate(minEndDate.getDate() + 1);
                               minEndDate.setHours(0, 0, 0, 0);
-                              return date < minEndDate;
+                              if (date < minEndDate) return true;
+                              if (projectEnd && date > projectEnd) return true;
+                              return false;
                             }}
                             initialFocus
                           />
@@ -404,6 +416,17 @@ export function SprintDialog({
                     {sprintDuration === 21 && " (3 weeks)"}
                     {sprintDuration === 28 && " (4 weeks)"}
                   </span>
+                </div>
+              )}
+
+              {(projectStart || projectEnd) && (
+                <div className="rounded-lg bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 p-3 text-xs text-amber-700 dark:text-amber-400">
+                  Sprint dates must fall within the project timeline
+                  {projectStart && projectEnd
+                    ? `: ${format(projectStart, "PPP")} – ${format(projectEnd, "PPP")}`
+                    : projectEnd
+                      ? ` (ends ${format(projectEnd, "PPP")})`
+                      : ` (starts ${format(projectStart!, "PPP")})`}
                 </div>
               )}
 

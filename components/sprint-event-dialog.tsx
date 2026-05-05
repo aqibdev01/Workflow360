@@ -99,6 +99,8 @@ interface SprintEventDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   sprintId: string;
+  sprintStartDate: string;
+  sprintEndDate: string;
   projectId: string;
   currentUserId: string;
   event?: {
@@ -120,6 +122,8 @@ export function SprintEventDialog({
   open,
   onOpenChange,
   sprintId,
+  sprintStartDate,
+  sprintEndDate,
   projectId,
   currentUserId,
   event,
@@ -243,6 +247,10 @@ export function SprintEventDialog({
 
   const canEdit = isProjectManager;
   const canDelete = isProjectManager && isEditing;
+
+  // Sprint date boundaries for event date constraint
+  const sprintStart = (() => { const d = new Date(sprintStartDate); d.setHours(0,0,0,0); return d; })();
+  const sprintEnd = (() => { const d = new Date(sprintEndDate); d.setHours(23,59,59,999); return d; })();
 
   const selectedEventType = form.watch("event_type");
   const selectedTypeConfig = eventTypes.find(t => t.value === selectedEventType);
@@ -372,10 +380,14 @@ export function SprintEventDialog({
                           mode="single"
                           selected={field.value}
                           onSelect={field.onChange}
+                          disabled={(date) => date < sprintStart || date > sprintEnd}
                           initialFocus
                         />
                       </PopoverContent>
                     </Popover>
+                    <p className="text-xs text-muted-foreground">
+                      Must be within sprint: {format(sprintStart, "PPP")} – {format(sprintEnd, "PPP")}
+                    </p>
                     <FormMessage />
                   </FormItem>
                 )}
