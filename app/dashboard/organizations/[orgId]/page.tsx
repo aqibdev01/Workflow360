@@ -16,12 +16,13 @@ import {
   LayoutDashboard,
   Sparkles,
 } from "lucide-react";
-import { getOrganization, getOrganizationProjects, getOrganizationMembers } from "@/lib/database";
+import { getOrganization, getOrganizationProjects, getOrganizationMembers, getOrgJoinRequests } from "@/lib/database";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 import { useBreadcrumbs } from "@/components/breadcrumbs";
 import { OrgMemberTable } from "@/components/org/OrgMemberTable";
+import { JoinRequestsPanel, type JoinRequest } from "@/components/org/JoinRequestsPanel";
 import { Skeleton } from "@/components/ui/skeleton";
 
 export default function OrganizationDashboardPage() {
@@ -33,6 +34,7 @@ export default function OrganizationDashboardPage() {
   const [organization, setOrganization] = useState<any>(null);
   const [projects, setProjects] = useState<any[]>([]);
   const [members, setMembers] = useState<any[]>([]);
+  const [joinRequests, setJoinRequests] = useState<JoinRequest[]>([]);
   const [activeTasks, setActiveTasks] = useState(0);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<"overview" | "members">("overview");
@@ -55,6 +57,12 @@ export default function OrganizationDashboardPage() {
         setOrganization(orgData);
         setProjects(projectsData || []);
         setMembers(membersData || []);
+
+        // Load join requests for admins/managers (silently skip if not admin)
+        const currentUserMember = (membersData || []).find((m: any) => m.user_id === user?.id);
+        if (currentUserMember?.role === "admin" || currentUserMember?.role === "manager") {
+          getOrgJoinRequests(orgId).then(setJoinRequests).catch(() => {});
+        }
 
         const projectIds = (projectsData || []).map((p: any) => p.id);
         if (projectIds.length > 0) {
@@ -216,6 +224,11 @@ export default function OrganizationDashboardPage() {
           >
             <Users className="h-4 w-4" />
             Members
+            {joinRequests.length > 0 && (
+              <span className="ml-0.5 h-5 min-w-5 px-1.5 rounded-full bg-amber-500 text-white text-[10px] font-bold flex items-center justify-center">
+                {joinRequests.length}
+              </span>
+            )}
           </button>
         )}
         <Link href={`/dashboard/organizations/${orgId}/communication`}>
@@ -349,17 +362,45 @@ export default function OrganizationDashboardPage() {
 
       {/* Members Tab */}
       {activeTab === "members" && isOrgAdmin && (
-        <div className="bg-white dark:bg-slate-800/50 rounded-xl p-6 shadow-sm">
-          <OrgMemberTable
-            members={members}
-            currentUserId={currentUserId}
-            isAdmin={currentMember?.role === "admin"}
-            orgName={organization?.name || ""}
-            onMembersChanged={async () => {
-              const updated = await getOrganizationMembers(orgId);
-              setMembers(updated || []);
-            }}
-          />
+        <div className="space-y-6">
+          {/* Pending join requests */}
+          {joinRequests.length > 0 && (
+            <div className="bg-white dark:bg-slate-800/50 rounded-xl p-6 shadow-sm">
+              <div className="flex items-center gap-2 mb-4">
+                <h3 className="text-base font-semibold">Membership Requests</h3>
+                <span className="h-5 px-1.5 rounded-full bg-amber-500 text-white text-[10px] font-bold flex items-center justify-center">
+                  {joinRequests.length}
+                </span>
+              </div>
+              <JoinRequestsPanel
+                orgId={orgId}
+                orgName={organization?.name || ""}
+                requests={joinRequests}
+                onRequestsChanged={async () => {
+                  const [updatedMembers, updatedRequests] = await Promise.all([
+                    getOrganizationMembers(orgId),
+                    getOrgJoinRequests(orgId),
+                  ]);
+                  setMembers(updatedMembers || []);
+                  setJoinRequests(updatedRequests);
+                }}
+              />
+            </div>
+          )}
+
+          {/* Current members */}
+          <div className="bg-white dark:bg-slate-800/50 rounded-xl p-6 shadow-sm">
+            <OrgMemberTable
+              members={members}
+              currentUserId={currentUserId}
+              isAdmin={currentMember?.role === "admin"}
+              orgName={organization?.name || ""}
+              onMembersChanged={async () => {
+                const updated = await getOrganizationMembers(orgId);
+                setMembers(updated || []);
+              }}
+            />
+          </div>
         </div>
       )}
     </div>

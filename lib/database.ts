@@ -177,8 +177,8 @@ export async function getOrganizationByInviteCode(inviteCode: string) {
 }
 
 /**
- * Join organization by invite code
- * Uses a SECURITY DEFINER function to bypass RLS
+ * Submit a join request for an organization via invite code.
+ * No longer adds the user directly — creates a pending request instead.
  */
 export async function joinOrganizationByInviteCode(inviteCode: string, userId: string) {
   const { data, error } = await supabase
@@ -188,7 +188,40 @@ export async function joinOrganizationByInviteCode(inviteCode: string, userId: s
     } as any);
 
   if (error) throw error;
-  return data as { success: boolean; error?: string; org_id?: string; org_name?: string };
+  return data as { success: boolean; error?: string; org_id?: string; org_name?: string; status?: string };
+}
+
+/**
+ * Fetch all pending join requests for an organization (admin/manager only).
+ */
+export async function getOrgJoinRequests(orgId: string) {
+  const { data, error } = await supabase
+    .rpc("get_org_join_requests", { p_org_id: orgId } as any);
+
+  if (error) throw error;
+  return (data ?? []) as {
+    id: string;
+    user_id: string;
+    status: string;
+    requested_at: string;
+    email: string;
+    full_name: string | null;
+    avatar_url: string | null;
+  }[];
+}
+
+/**
+ * Approve or reject a pending join request.
+ */
+export async function reviewJoinRequest(requestId: string, action: "approved" | "rejected") {
+  const { data, error } = await supabase
+    .rpc("review_join_request", {
+      p_request_id: requestId,
+      p_action: action,
+    } as any);
+
+  if (error) throw error;
+  return data as { success: boolean; error?: string; action?: string; user_id?: string; org_id?: string };
 }
 
 /**
