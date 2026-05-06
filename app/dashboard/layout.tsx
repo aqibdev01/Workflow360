@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
@@ -88,6 +88,80 @@ function getNavigation(pathname: string) {
   return { general: baseNavigation, project: projectNavItems, projectId };
 }
 
+// ── Project nav section ───────────────────────────────────────────────────────
+// Isolated into its own component so useSearchParams() is scoped here and can
+// be wrapped in <Suspense> in the parent, satisfying Next.js SSR requirements.
+function ProjectNavSection({
+  items,
+  projectId,
+  sidebarCollapsed,
+  onClose,
+}: {
+  items: NavItem[];
+  projectId: string;
+  sidebarCollapsed: boolean;
+  onClose: () => void;
+}) {
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const currentTab = searchParams?.get("tab") || "overview";
+
+  if (items.length === 0) return null;
+
+  return (
+    <div>
+      {!sidebarCollapsed && (
+        <label className="px-3 text-[0.625rem] font-bold uppercase text-slate-400 tracking-widest mb-2 block">
+          Project
+        </label>
+      )}
+      <div className="space-y-0.5">
+        {items.map((item) => {
+          const isActive =
+            pathname.startsWith(`/dashboard/projects/${projectId}`) &&
+            currentTab === item.tab;
+          const Icon = item.icon;
+
+          if (item.comingSoon) {
+            return (
+              <div
+                key={item.name}
+                className={`flex items-center ${sidebarCollapsed ? "justify-center" : ""} gap-3 px-3 py-2 text-sm text-slate-400 cursor-not-allowed rounded-lg`}
+                title={sidebarCollapsed ? `${item.name} - Coming Soon` : undefined}
+              >
+                <Icon className="h-5 w-5 shrink-0" />
+                {!sidebarCollapsed && <span className="text-sm">{item.name}</span>}
+                {!sidebarCollapsed && (
+                  <span className="ml-auto text-[9px] bg-violet-100 dark:bg-violet-900/30 text-violet-600 dark:text-violet-400 px-1.5 py-0.5 rounded-full font-bold">
+                    Soon
+                  </span>
+                )}
+              </div>
+            );
+          }
+
+          return (
+            <Link
+              key={item.name}
+              href={item.href}
+              onClick={onClose}
+              className={`flex items-center ${sidebarCollapsed ? "justify-center" : ""} gap-3 px-3 py-2 text-sm font-medium rounded-lg transition-colors duration-200 ${
+                isActive
+                  ? "text-indigo-700 dark:text-indigo-300 bg-white dark:bg-slate-800 font-bold shadow-sm"
+                  : "text-slate-500 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-300 hover:bg-slate-200/50 dark:hover:bg-slate-800/50"
+              }`}
+              title={sidebarCollapsed ? item.name : undefined}
+            >
+              <Icon className="h-5 w-5 shrink-0" />
+              {!sidebarCollapsed && <span>{item.name}</span>}
+            </Link>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export default function DashboardLayout({
   children,
 }: {
@@ -95,7 +169,6 @@ export default function DashboardLayout({
 }) {
   const pathname = usePathname();
   const router = useRouter();
-  const searchParams = useSearchParams();
   const { user, userProfile } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -104,8 +177,6 @@ export default function DashboardLayout({
   // Extract orgId from path for notification bell
   const orgMatch = pathname.match(/\/dashboard\/organizations\/([^/]+)/);
   const currentOrgId = orgMatch && UUID_RE.test(orgMatch[1]) ? orgMatch[1] : null;
-
-  const currentTab = searchParams?.get("tab") || "overview";
 
   // System alerts
   const [alerts] = useState<AlertItem[]>([]);
@@ -151,10 +222,8 @@ export default function DashboardLayout({
 
   const { general: generalItems, project: projectItems, projectId: currentProjectId } = getNavigation(pathname);
 
+  // Active-state check for general nav items only (no tab needed)
   const getIsActive = (item: NavItem) => {
-    if (item.tab && currentProjectId) {
-      return pathname.startsWith(`/dashboard/projects/${currentProjectId}`) && currentTab === item.tab;
-    }
     if (item.href === "/dashboard") return pathname === "/dashboard";
     if (item.href === "/dashboard/organizations") {
       return (
@@ -263,60 +332,17 @@ export default function DashboardLayout({
               </div>
             </div>
 
-            {/* Project Section — only shown when inside a project */}
-            {projectItems.length > 0 && (
-              <div>
-                {!sidebarCollapsed && (
-                  <label className="px-3 text-[0.625rem] font-bold uppercase text-slate-400 tracking-widest mb-2 block">
-                    Project
-                  </label>
-                )}
-                <div className="space-y-0.5">
-                  {projectItems.map((item) => {
-                    const isActive = getIsActive(item);
-                    const Icon = item.icon;
-
-                    if (item.comingSoon) {
-                      return (
-                        <div
-                          key={item.name}
-                          className={`flex items-center ${
-                            sidebarCollapsed ? "justify-center" : ""
-                          } gap-3 px-3 py-2 text-sm text-slate-400 cursor-not-allowed rounded-lg`}
-                          title={sidebarCollapsed ? `${item.name} - Coming Soon` : undefined}
-                        >
-                          <Icon className="h-5 w-5 shrink-0" />
-                          {!sidebarCollapsed && <span className="text-sm">{item.name}</span>}
-                          {!sidebarCollapsed && (
-                            <span className="ml-auto text-[9px] bg-violet-100 dark:bg-violet-900/30 text-violet-600 dark:text-violet-400 px-1.5 py-0.5 rounded-full font-bold">
-                              Soon
-                            </span>
-                          )}
-                        </div>
-                      );
-                    }
-
-                    return (
-                      <Link
-                        key={item.name}
-                        href={item.href}
-                        onClick={() => setSidebarOpen(false)}
-                        className={`flex items-center ${
-                          sidebarCollapsed ? "justify-center" : ""
-                        } gap-3 px-3 py-2 text-sm font-medium rounded-lg transition-colors duration-200 ${
-                          isActive
-                            ? "text-indigo-700 dark:text-indigo-300 bg-white dark:bg-slate-800 font-bold shadow-sm"
-                            : "text-slate-500 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-300 hover:bg-slate-200/50 dark:hover:bg-slate-800/50"
-                        }`}
-                        title={sidebarCollapsed ? item.name : undefined}
-                      >
-                        <Icon className="h-5 w-5 shrink-0" />
-                        {!sidebarCollapsed && <span>{item.name}</span>}
-                      </Link>
-                    );
-                  })}
-                </div>
-              </div>
+            {/* Project Section — only shown when inside a project.
+                Wrapped in Suspense because ProjectNavSection uses useSearchParams(). */}
+            {currentProjectId && (
+              <Suspense fallback={null}>
+                <ProjectNavSection
+                  items={projectItems}
+                  projectId={currentProjectId}
+                  sidebarCollapsed={sidebarCollapsed}
+                  onClose={() => setSidebarOpen(false)}
+                />
+              </Suspense>
             )}
           </nav>
 

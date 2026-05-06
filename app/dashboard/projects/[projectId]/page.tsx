@@ -1315,7 +1315,7 @@ const roleIcons: { [key: string]: any } = {
                                             : task.priority === "medium" ? "#3b82f6"
                                             : "#6b7280",
                                       }}
-                                      onClick={() => isProjectManager ? openEditTaskDialog(task) : setViewingTask(task)}
+                                      onClick={() => setViewingTask(task)}
                                     >
                                       <CardContent className="p-3 space-y-2">
                                         <div className="flex items-start justify-between gap-2">
@@ -1708,94 +1708,88 @@ const roleIcons: { [key: string]: any } = {
                     )}
                   </div>
 
-                  {/* AI Assignee suggestion — always available (also for re-assignment) */}
-                  {(
-                    <AssigneeSuggestionPanel
-                      taskId={viewingTask.id}
-                      hasAssignee={!!viewingTask.assignee_id}
-                      userRole={userRole?.role || "viewer"}
-                      onAssigned={(userId, fullName) => {
-                        // Optimistic update
-                        setViewingTask((prev: any) => prev ? {
-                          ...prev,
-                          assignee_id: userId,
-                          assignee: { id: userId, full_name: fullName, email: "", avatar_url: null },
-                          ai_suggested_assignee_id: userId,
-                        } : null);
-                        // Update in DB
-                        (supabase as any)
-                          .from("tasks")
-                          .update({ assignee_id: userId, ai_suggested_assignee_id: userId })
-                          .eq("id", viewingTask.id)
-                          .then(() => refreshTasks());
-                      }}
-                      onDismiss={() => {}}
-                    />
-                  )}
+                  {/* AI sections — project managers only */}
+                  {isProjectManager && (
+                    <>
+                      <AssigneeSuggestionPanel
+                        taskId={viewingTask.id}
+                        hasAssignee={!!viewingTask.assignee_id}
+                        userRole={userRole?.role || "viewer"}
+                        onAssigned={(userId, fullName) => {
+                          setViewingTask((prev: any) => prev ? {
+                            ...prev,
+                            assignee_id: userId,
+                            assignee: { id: userId, full_name: fullName, email: "", avatar_url: null },
+                            ai_suggested_assignee_id: userId,
+                          } : null);
+                          (supabase as any)
+                            .from("tasks")
+                            .update({ assignee_id: userId, ai_suggested_assignee_id: userId })
+                            .eq("id", viewingTask.id)
+                            .then(() => refreshTasks());
+                        }}
+                        onDismiss={() => {}}
+                      />
 
-                  {/* Subtask hierarchy — shown when task has accepted subtasks */}
-                  {!viewingTask.parent_task_id && (
-                    <SubtaskHierarchyView
-                      parentTaskId={viewingTask.id}
-                      parentTitle={viewingTask.title}
-                      onSubtaskClick={(subtaskId) => {
-                        const subtask = tasks.find((t: any) => t.id === subtaskId);
-                        if (subtask) setViewingTask(subtask);
-                      }}
-                    />
-                  )}
+                      {!viewingTask.parent_task_id && (
+                        <SubtaskHierarchyView
+                          parentTaskId={viewingTask.id}
+                          parentTitle={viewingTask.title}
+                          onSubtaskClick={(subtaskId) => {
+                            const subtask = tasks.find((t: any) => t.id === subtaskId);
+                            if (subtask) setViewingTask(subtask);
+                          }}
+                        />
+                      )}
 
-                  {/* AI Decompose button — no subtasks yet */}
-                  {!viewingTask.parent_task_id && !decompResult && (
-                    <DecomposeButton
-                      taskId={viewingTask.id}
-                      hasSubtasks={tasks.some((t: any) => t.parent_task_id === viewingTask.id)}
-                      userRole={userRole?.role || "viewer"}
-                      decompositionStatus={viewingTask.decomposition_status}
-                      onDecompose={(result) => setDecompResult(result)}
-                    />
-                  )}
+                      {!viewingTask.parent_task_id && !decompResult && (
+                        <DecomposeButton
+                          taskId={viewingTask.id}
+                          hasSubtasks={tasks.some((t: any) => t.parent_task_id === viewingTask.id)}
+                          userRole={userRole?.role || "viewer"}
+                          decompositionStatus={viewingTask.decomposition_status}
+                          onDecompose={(result) => setDecompResult(result)}
+                        />
+                      )}
 
-                  {/* Decomposition panel — shown after AI analysis */}
-                  {decompResult && (
-                    <DecompositionPanel
-                      result={decompResult}
-                      onClose={() => setDecompResult(null)}
-                      onAccepted={() => {
-                        setDecompResult(null);
-                        setViewingTask(null);
-                        refreshTasks();
-                      }}
-                      onRejected={() => {
-                        setDecompResult(null);
-                      }}
-                    />
-                  )}
+                      {decompResult && (
+                        <DecompositionPanel
+                          result={decompResult}
+                          onClose={() => setDecompResult(null)}
+                          onAccepted={() => {
+                            setDecompResult(null);
+                            setViewingTask(null);
+                            refreshTasks();
+                          }}
+                          onRejected={() => setDecompResult(null)}
+                        />
+                      )}
 
-                  {/* Decomposition history accordion */}
-                  {!decompResult && decompHistory.length > 0 && (
-                    <details className="group">
-                      <summary className="flex items-center gap-2 cursor-pointer text-sm text-muted-foreground hover:text-foreground transition-colors">
-                        <ChevronRight className="h-3.5 w-3.5 group-open:rotate-90 transition-transform" />
-                        Past AI Analyses ({decompHistory.length})
-                      </summary>
-                      <div className="mt-2 space-y-2 pl-5">
-                        {decompHistory.map((entry: any) => (
-                          <div key={entry.id} className="text-xs p-2 rounded-md bg-muted/50 space-y-1">
-                            <div className="flex items-center justify-between">
-                              <Badge variant="outline" className="text-[10px] capitalize">{entry.status}</Badge>
-                              <span className="text-muted-foreground">
-                                {new Date(entry.created_at).toLocaleDateString()}
-                              </span>
-                            </div>
-                            <div className="text-muted-foreground">
-                              {Array.isArray(entry.suggested_subtasks) ? entry.suggested_subtasks.length : 0} subtasks suggested
-                              {entry.confidence_score != null && ` \u00B7 ${Math.round(entry.confidence_score * 100)}% confidence`}
-                            </div>
+                      {!decompResult && decompHistory.length > 0 && (
+                        <details className="group">
+                          <summary className="flex items-center gap-2 cursor-pointer text-sm text-muted-foreground hover:text-foreground transition-colors">
+                            <ChevronRight className="h-3.5 w-3.5 group-open:rotate-90 transition-transform" />
+                            Past AI Analyses ({decompHistory.length})
+                          </summary>
+                          <div className="mt-2 space-y-2 pl-5">
+                            {decompHistory.map((entry: any) => (
+                              <div key={entry.id} className="text-xs p-2 rounded-md bg-muted/50 space-y-1">
+                                <div className="flex items-center justify-between">
+                                  <Badge variant="outline" className="text-[10px] capitalize">{entry.status}</Badge>
+                                  <span className="text-muted-foreground">
+                                    {new Date(entry.created_at).toLocaleDateString()}
+                                  </span>
+                                </div>
+                                <div className="text-muted-foreground">
+                                  {Array.isArray(entry.suggested_subtasks) ? entry.suggested_subtasks.length : 0} subtasks suggested
+                                  {entry.confidence_score != null && ` \u00B7 ${Math.round(entry.confidence_score * 100)}% confidence`}
+                                </div>
+                              </div>
+                            ))}
                           </div>
-                        ))}
-                      </div>
-                    </details>
+                        </details>
+                      )}
+                    </>
                   )}
                 </div>
               )}
