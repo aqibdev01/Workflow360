@@ -1,10 +1,9 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { supabase } from "@/lib/supabase";
 import {
   getNotifications,
-  getUnreadCount,
   markNotificationRead,
   markAllNotificationsRead,
   deleteNotification as deleteNotificationFn,
@@ -14,9 +13,14 @@ import { toast } from "sonner";
 
 export function useNotifications(orgId: string | null) {
   const [notifications, setNotifications] = useState<Notification[]>([]);
-  const [unreadCount, setUnreadCount] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
   const channelRef = useRef<any>(null);
+
+  // Derived — always in sync with the notifications array
+  const unreadCount = useMemo(
+    () => notifications.filter((n) => !n.is_read).length,
+    [notifications]
+  );
 
   // ── Fetch initial data ──────────────────────────────────────────────────
 
@@ -25,12 +29,8 @@ export function useNotifications(orgId: string | null) {
 
     setIsLoading(true);
     try {
-      const [result, count] = await Promise.all([
-        getNotifications(orgId, { page: 1 }),
-        getUnreadCount(orgId),
-      ]);
+      const result = await getNotifications(orgId, { page: 1 });
       setNotifications(result.notifications);
-      setUnreadCount(count);
     } catch (err) {
       console.error("Error fetching notifications:", err);
     } finally {
@@ -66,7 +66,7 @@ export function useNotifications(orgId: string | null) {
             if (newNotification.organization_id !== orgId) return;
 
             setNotifications((prev) => [newNotification, ...prev]);
-            setUnreadCount((prev) => prev + 1);
+            // unreadCount is derived from notifications — no manual increment needed
 
             // Show toast
             toast(newNotification.title, {
@@ -131,17 +131,23 @@ export function useNotifications(orgId: string | null) {
 
   const markRead = useCallback(
     async (notificationId: string) => {
+      // Optimistic update so the UI responds immediately
+      setNotifications((prev) =>
+        prev.map((n) =>
+          n.id === notificationId
+            ? { ...n, is_read: true, read_at: new Date().toISOString() }
+            : n
+        )
+      );
       try {
         await markNotificationRead(notificationId);
+      } catch (err) {
+        // Roll back optimistic update on failure
         setNotifications((prev) =>
           prev.map((n) =>
-            n.id === notificationId
-              ? { ...n, is_read: true, read_at: new Date().toISOString() }
-              : n
+            n.id === notificationId ? { ...n, is_read: false, read_at: null } : n
           )
         );
-        setUnreadCount((prev) => Math.max(0, prev - 1));
-      } catch (err) {
         console.error("Error marking notification read:", err);
       }
     },
@@ -151,39 +157,33 @@ export function useNotifications(orgId: string | null) {
   const markAllRead = useCallback(async () => {
     if (!orgId) return;
 
+    const now = new Date().toISOString();
+    // Optimistic update
+    setNotifications((prev) =>
+      prev.map((n) => ({ ...n, is_read: true, read_at: n.read_at || now }))
+    );
     try {
       await markAllNotificationsRead(orgId);
-      setNotifications((prev) =>
-        prev.map((n) => ({
-          ...n,
-          is_read: true,
-          read_at: n.read_at || new Date().toISOString(),
-        }))
-      );
-      setUnreadCount(0);
     } catch (err) {
+      // Re-fetch to restore correct state on failure
+      refresh();
       console.error("Error marking all notifications read:", err);
     }
-  }, [orgId]);
+  }, [orgId, refresh]);
 
   const deleteNotification = useCallback(
     async (notificationId: string) => {
+      // Optimistic removal
+      setNotifications((prev) => prev.filter((n) => n.id !== notificationId));
       try {
-        const wasUnread = notifications.find(
-          (n) => n.id === notificationId && !n.is_read
-        );
         await deleteNotificationFn(notificationId);
-        setNotifications((prev) =>
-          prev.filter((n) => n.id !== notificationId)
-        );
-        if (wasUnread) {
-          setUnreadCount((prev) => Math.max(0, prev - 1));
-        }
       } catch (err) {
+        // Re-fetch to restore on failure
+        refresh();
         console.error("Error deleting notification:", err);
       }
     },
-    [notifications]
+    [refresh]
   );
 
   return {

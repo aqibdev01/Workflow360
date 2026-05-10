@@ -9,6 +9,7 @@ import {
   BarChart3,
   CalendarDays,
   Files,
+  Mail,
   Menu,
   X,
   LogOut,
@@ -105,6 +106,13 @@ function ProjectNavSection({
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const currentTab = searchParams?.get("tab") || "overview";
+  const [projectOrgId, setProjectOrgId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      setProjectOrgId(sessionStorage.getItem("currentProjectOrgId"));
+    }
+  }, [projectId]);
 
   if (items.length === 0) return null;
 
@@ -157,6 +165,23 @@ function ProjectNavSection({
             </Link>
           );
         })}
+
+        {/* Mail link — links to org mail; orgId stored in sessionStorage by the project page */}
+        {projectOrgId && (
+          <Link
+            href={`/dashboard/organizations/${projectOrgId}/mail`}
+            onClick={onClose}
+            className={`flex items-center ${sidebarCollapsed ? "justify-center" : ""} gap-3 px-3 py-2 text-sm font-medium rounded-lg transition-colors duration-200 ${
+              pathname.startsWith(`/dashboard/organizations/${projectOrgId}/mail`)
+                ? "text-indigo-700 dark:text-indigo-300 bg-white dark:bg-slate-800 font-bold shadow-sm"
+                : "text-slate-500 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-300 hover:bg-slate-200/50 dark:hover:bg-slate-800/50"
+            }`}
+            title={sidebarCollapsed ? "Mail" : undefined}
+          >
+            <Mail className="h-5 w-5 shrink-0" />
+            {!sidebarCollapsed && <span>Mail</span>}
+          </Link>
+        )}
       </div>
     </div>
   );
@@ -346,77 +371,6 @@ export default function DashboardLayout({
             )}
           </nav>
 
-          {/* Footer — User Profile */}
-          <div className="mt-auto shrink-0 border-t border-slate-200 dark:border-slate-800 p-3">
-            <div
-              className={`flex items-center ${
-                sidebarCollapsed ? "justify-center" : "gap-3"
-              } px-2 py-2`}
-            >
-              <Avatar
-                src={userProfile?.avatar_url || undefined}
-                alt={userProfile?.full_name || user?.email || "User"}
-                fallback={
-                  userProfile?.full_name?.[0]?.toUpperCase() ||
-                  user?.email?.[0]?.toUpperCase() ||
-                  "U"
-                }
-                className="h-9 w-9 rounded-xl shrink-0"
-              />
-              {!sidebarCollapsed && (
-                <>
-                  <div className="flex flex-col min-w-0 flex-1">
-                    <span className="text-sm font-bold text-foreground truncate">
-                      {userProfile?.full_name || user?.email?.split("@")[0] || "User"}
-                    </span>
-                    <span className="text-[10px] text-slate-400 font-medium truncate">
-                      {user?.email || ""}
-                    </span>
-                  </div>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <button className="text-slate-400 hover:text-indigo-600 transition-colors shrink-0">
-                        <Settings className="h-4 w-4" />
-                      </button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" className="w-56">
-                      <DropdownMenuLabel>My Account</DropdownMenuLabel>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem
-                        className="cursor-pointer"
-                        onSelect={() => router.push("/")}
-                      >
-                        <Home className="mr-2 h-4 w-4" />
-                        Landing Page
-                      </DropdownMenuItem>
-                      <DropdownMenuItem
-                        className="cursor-pointer"
-                        onSelect={() => router.push("/dashboard/settings")}
-                      >
-                        <User className="mr-2 h-4 w-4" />
-                        Profile & Skills
-                      </DropdownMenuItem>
-                      <DropdownMenuItem
-                        className="cursor-pointer"
-                        onSelect={() => router.push("/dashboard/settings")}
-                      >
-                        <Settings className="mr-2 h-4 w-4" />
-                        Settings
-                      </DropdownMenuItem>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem
-                        onSelect={handleLogout}
-                        className="cursor-pointer text-destructive focus:text-destructive focus:bg-destructive/10"
-                      >
-                        <LogOut className="mr-2 h-4 w-4" />
-                        Logout
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </>
-              )}
-            </div>
-          </div>
         </aside>
 
         {/* ── Main content area ── */}

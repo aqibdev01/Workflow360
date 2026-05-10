@@ -44,6 +44,7 @@ import {
   Trash2,
   Files,
   Paperclip,
+  Mail,
   Sparkles,
   Wand2,
   ChevronRight,
@@ -347,7 +348,11 @@ function ProjectDashboardContent() {
     const url = tab === "overview"
       ? `/dashboard/projects/${projectId}`
       : `/dashboard/projects/${projectId}?tab=${tab}`;
-    router.replace(url, { scroll: false });
+    // Use history API directly to avoid triggering a Next.js navigation,
+    // which can cause the error boundary to fire during settings tab mount.
+    if (typeof window !== "undefined") {
+      window.history.replaceState(null, "", url);
+    }
   };
 
   useEffect(() => {
@@ -483,6 +488,12 @@ const roleIcons: { [key: string]: any } = {
       setTaskStats(stats);
       setTasks(projectTasks || []);
       setSprints(projectSprints || []);
+
+      // Persist orgId so the sidebar can link to the org's mail page
+      const orgId = (projectData as any)?.organizations?.id;
+      if (orgId && typeof window !== "undefined") {
+        sessionStorage.setItem("currentProjectOrgId", orgId);
+      }
 
       // Load file counts for tasks
       if (projectTasks && projectTasks.length > 0) {
@@ -766,17 +777,6 @@ const roleIcons: { [key: string]: any } = {
                 </p>
                 <div className="flex items-center gap-2">
                   <h1 className="text-3xl font-bold tracking-tight">{project.name}</h1>
-                  {isProjectManager && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-8 w-8 p-0 text-muted-foreground hover:text-indigo-500"
-                      onClick={() => setEditProjectOpen(true)}
-                      title="Edit project"
-                    >
-                      <Settings className="h-4 w-4" />
-                    </Button>
-                  )}
                 </div>
               </div>
             </div>
@@ -995,6 +995,14 @@ const roleIcons: { [key: string]: any } = {
                 </Button>
                 <Button
                   variant="outline"
+                  className="h-auto py-4 flex-col gap-2 hover:bg-primary/5 hover:text-primary hover:border-primary/50 transition-colors"
+                  onClick={() => router.push(`/dashboard/organizations/${project.organizations?.id}/mail`)}
+                >
+                  <Mail className="h-6 w-6" />
+                  <span className="text-sm font-medium">Mail</span>
+                </Button>
+                <Button
+                  variant="outline"
                   className="h-auto py-4 flex-col gap-2 hover:bg-purple-50 hover:text-purple-700 hover:border-purple-300 transition-colors"
                   onClick={() => setActiveTab("ai-optimizer")}
                 >
@@ -1017,9 +1025,9 @@ const roleIcons: { [key: string]: any } = {
                   <span className="text-muted-foreground">Status</span>
                   <Badge
                     variant="outline"
-                    className={`${statusConfig[project.status as keyof typeof statusConfig].color} border text-xs`}
+                    className={`${statusConfig[project.status as keyof typeof statusConfig]?.color} border text-xs`}
                   >
-                    {statusConfig[project.status as keyof typeof statusConfig].label}
+                    {statusConfig[project.status as keyof typeof statusConfig]?.label || project.status}
                   </Badge>
                 </div>
                 {project.start_date && (
