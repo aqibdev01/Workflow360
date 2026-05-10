@@ -72,7 +72,7 @@ const ROLE_OPTIONS = [
 ];
 
 const CUSTOM_ROLE_OPTIONS = [
-  { value: "", label: "None" },
+  { value: "none", label: "None" },
   { value: "Developer", label: "Developer" },
   { value: "QA Engineer", label: "QA Engineer" },
   { value: "Designer", label: "Designer" },
@@ -181,9 +181,10 @@ export function ProjectMemberManager({
     member: ProjectMember,
     newCustomRole: string
   ) => {
+    const actualRole = newCustomRole === "none" ? "" : newCustomRole;
     setUpdatingId(member.id);
     try {
-      await updateMemberRole(member.id, member.role, newCustomRole || undefined);
+      await updateMemberRole(member.id, member.role, actualRole || undefined);
       toast.success(newCustomRole ? `Custom role set to ${newCustomRole}` : "Custom role removed");
       onMembersChanged();
     } catch (err) {
@@ -214,7 +215,8 @@ export function ProjectMemberManager({
     if (!selectedUserId) return;
     setAdding(true);
     try {
-      await addMemberToProject(projectId, selectedUserId, addRole, addCustomRole || undefined);
+      const customRoleToSave = addCustomRole === "none" ? "" : addCustomRole;
+      await addMemberToProject(projectId, selectedUserId, addRole, customRoleToSave || undefined);
       toast.success("Member added to project");
       setAddDialogOpen(false);
       setSelectedUserId("");
@@ -357,7 +359,7 @@ export function ProjectMemberManager({
                   <td className="px-4 py-3">
                     {canManage && !isSelf ? (
                       <Select
-                        value={member.custom_role || ""}
+                        value={member.custom_role || "none"}
                         onValueChange={(v) => handleCustomRoleChange(member, v)}
                       >
                         <SelectTrigger className="h-7 w-[150px] text-xs">
@@ -524,7 +526,7 @@ export function ProjectMemberManager({
                 </div>
                 <div className="space-y-1.5">
                   <Label className="text-xs">Custom Role</Label>
-                  <Select value={addCustomRole} onValueChange={setAddCustomRole}>
+                  <Select value={addCustomRole || "none"} onValueChange={setAddCustomRole}>
                     <SelectTrigger className="h-8 text-xs">
                       <SelectValue placeholder="None" />
                     </SelectTrigger>

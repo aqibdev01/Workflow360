@@ -68,25 +68,24 @@ const baseNavigation: NavItem[] = [
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+function getProjectNavItems(projectId: string): NavItem[] {
+  return [
+    { name: "Kanban Board", href: `/dashboard/projects/${projectId}?tab=kanban`, icon: Kanban, comingSoon: false, tab: "kanban" },
+    { name: "Sprints", href: `/dashboard/projects/${projectId}?tab=sprints`, icon: Zap, comingSoon: false, tab: "sprints" },
+    { name: "Team", href: `/dashboard/projects/${projectId}?tab=team`, icon: Users, comingSoon: false, tab: "team" },
+    { name: "Analytics", href: `/dashboard/projects/${projectId}?tab=analytics`, icon: BarChart3, comingSoon: false, tab: "analytics" },
+    { name: "Files", href: `/dashboard/projects/${projectId}?tab=files`, icon: Files, comingSoon: false, tab: "files" },
+    { name: "Calendar", href: `/dashboard/projects/${projectId}?tab=calendar`, icon: CalendarDays, comingSoon: false, tab: "calendar" },
+    { name: "AI Optimizer", href: `/dashboard/projects/${projectId}?tab=ai-optimizer`, icon: Brain, comingSoon: false, tab: "ai-optimizer" },
+    { name: "Settings", href: `/dashboard/projects/${projectId}?tab=settings`, icon: Settings, comingSoon: false, tab: "settings" },
+  ];
+}
+
 function getNavigation(pathname: string) {
   const projectMatch = pathname.match(/\/dashboard\/projects\/([^/]+)/);
   const projectIdRaw = projectMatch ? projectMatch[1] : null;
   const projectId = projectIdRaw && UUID_RE.test(projectIdRaw) ? projectIdRaw : null;
-
-  const projectNavItems: NavItem[] = projectId
-    ? [
-        { name: "Kanban Board", href: `/dashboard/projects/${projectId}?tab=kanban`, icon: Kanban, comingSoon: false, tab: "kanban" },
-        { name: "Sprints", href: `/dashboard/projects/${projectId}?tab=sprints`, icon: Zap, comingSoon: false, tab: "sprints" },
-        { name: "Team", href: `/dashboard/projects/${projectId}?tab=team`, icon: Users, comingSoon: false, tab: "team" },
-        { name: "Analytics", href: `/dashboard/projects/${projectId}?tab=analytics`, icon: BarChart3, comingSoon: false, tab: "analytics" },
-        { name: "Files", href: `/dashboard/projects/${projectId}?tab=files`, icon: Files, comingSoon: false, tab: "files" },
-        { name: "Calendar", href: `/dashboard/projects/${projectId}?tab=calendar`, icon: CalendarDays, comingSoon: false, tab: "calendar" },
-        { name: "AI Optimizer", href: `/dashboard/projects/${projectId}?tab=ai-optimizer`, icon: Brain, comingSoon: false, tab: "ai-optimizer" },
-        { name: "Settings", href: `/dashboard/projects/${projectId}?tab=settings`, icon: Settings, comingSoon: false, tab: "settings" },
-      ]
-    : [];
-
-  return { general: baseNavigation, project: projectNavItems, projectId };
+  return { general: baseNavigation, project: projectId ? getProjectNavItems(projectId) : [], projectId };
 }
 
 // ── Project nav section ───────────────────────────────────────────────────────
@@ -198,10 +197,19 @@ export default function DashboardLayout({
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [darkMode, setDarkMode] = useState(false);
+  const [sessionProject, setSessionProject] = useState<{ projectId: string; orgId: string } | null>(null);
 
   // Extract orgId from path for notification bell
   const orgMatch = pathname.match(/\/dashboard\/organizations\/([^/]+)/);
   const currentOrgId = orgMatch && UUID_RE.test(orgMatch[1]) ? orgMatch[1] : null;
+
+  // Read project context from sessionStorage on each navigation
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const pid = sessionStorage.getItem("currentProjectId");
+    const oid = sessionStorage.getItem("currentProjectOrgId");
+    setSessionProject(pid && oid ? { projectId: pid, orgId: oid } : null);
+  }, [pathname]);
 
   // System alerts
   const [alerts] = useState<AlertItem[]>([]);
@@ -246,6 +254,18 @@ export default function DashboardLayout({
   };
 
   const { general: generalItems, project: projectItems, projectId: currentProjectId } = getNavigation(pathname);
+
+  // When on an org-level page (e.g. mail) that belongs to the same org as the last-visited project,
+  // keep showing the project nav so users can navigate back without losing context.
+  const effectiveProjectId =
+    currentProjectId ||
+    (!currentProjectId && currentOrgId && sessionProject?.orgId === currentOrgId
+      ? sessionProject.projectId
+      : null);
+  const effectiveProjectItems =
+    effectiveProjectId && !currentProjectId
+      ? getProjectNavItems(effectiveProjectId)
+      : projectItems;
 
   // Active-state check for general nav items only (no tab needed)
   const getIsActive = (item: NavItem) => {
@@ -357,13 +377,13 @@ export default function DashboardLayout({
               </div>
             </div>
 
-            {/* Project Section — only shown when inside a project.
+            {/* Project Section — shown when inside a project, or on an org page reached from a project.
                 Wrapped in Suspense because ProjectNavSection uses useSearchParams(). */}
-            {currentProjectId && (
+            {effectiveProjectId && (
               <Suspense fallback={null}>
                 <ProjectNavSection
-                  items={projectItems}
-                  projectId={currentProjectId}
+                  items={effectiveProjectItems}
+                  projectId={effectiveProjectId}
                   sidebarCollapsed={sidebarCollapsed}
                   onClose={() => setSidebarOpen(false)}
                 />
