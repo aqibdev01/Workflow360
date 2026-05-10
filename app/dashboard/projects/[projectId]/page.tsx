@@ -489,10 +489,11 @@ const roleIcons: { [key: string]: any } = {
       setTasks(projectTasks || []);
       setSprints(projectSprints || []);
 
-      // Persist orgId so the sidebar can link to the org's mail page
+      // Persist project + org context so the sidebar keeps showing project nav on org-level pages (e.g. mail)
       const orgId = (projectData as any)?.organizations?.id;
-      if (orgId && typeof window !== "undefined") {
-        sessionStorage.setItem("currentProjectOrgId", orgId);
+      if (typeof window !== "undefined") {
+        if (orgId) sessionStorage.setItem("currentProjectOrgId", orgId);
+        sessionStorage.setItem("currentProjectId", projectId);
       }
 
       // Load file counts for tasks
