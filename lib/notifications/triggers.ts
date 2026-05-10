@@ -24,7 +24,7 @@ export async function notifyTaskAssigned(
     type: "task_assigned",
     title: `${assignedBy.name} assigned you a task`,
     body: task.title,
-    link: `/dashboard/projects/${task.project_id}?tab=board&highlight=${task.id}`,
+    link: `/dashboard/projects/${task.project_id}?tab=kanban&highlight=${task.id}`,
     metadata: {
       taskId: task.id,
       projectId: task.project_id,
@@ -75,7 +75,7 @@ export async function notifyStatusChanged(
       type: "task_status_changed",
       title: `Task moved to ${statusLabel}`,
       body: `${changedBy.name} changed "${task.title}" to ${statusLabel}`,
-      link: `/dashboard/projects/${task.project_id}?tab=board&highlight=${task.id}`,
+      link: `/dashboard/projects/${task.project_id}?tab=kanban&highlight=${task.id}`,
       metadata: {
         taskId: task.id,
         projectId: task.project_id,
@@ -190,7 +190,7 @@ export async function notifySprintDeadline(
       type: "sprint_deadline",
       title: `Sprint ending soon: ${sprint.name}`,
       body: `"${sprint.name}" in ${projectName} ends on ${new Date(sprint.end_date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`,
-      link: `/dashboard/projects/${sprint.project_id}?tab=board`,
+      link: `/dashboard/projects/${sprint.project_id}?tab=kanban`,
       metadata: {
         sprintId: sprint.id,
         sprintName: sprint.name,

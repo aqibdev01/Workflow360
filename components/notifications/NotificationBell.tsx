@@ -147,9 +147,9 @@ export function NotificationBell({ orgId }: NotificationBellProps) {
     return notifications;
   }, [notifications, tab]);
 
-  const handleSelect = async (n: Notification) => {
+  const handleSelect = (n: Notification) => {
     if (!n.is_read) {
-      await markRead(n.id);
+      markRead(n.id);
     }
     setOpen(false);
     if (n.link) {

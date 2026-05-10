@@ -102,10 +102,16 @@ export async function getUnreadCount(orgId: string): Promise<number> {
 export async function markNotificationRead(
   notificationId: string
 ): Promise<void> {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
+
   const { error } = await (supabase as any)
     .from("notifications")
     .update({ is_read: true, read_at: new Date().toISOString() })
-    .eq("id", notificationId);
+    .eq("id", notificationId)
+    .eq("user_id", user.id);
 
   if (error) throw error;
 }
