@@ -4,11 +4,39 @@ import { useState, useEffect, useRef, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
+import { getOrCreateUserProfile } from "@/lib/database";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { Logo } from "@/components/Logo";
 import { Loader2, AlertCircle, CheckCircle2, Mail, RefreshCw } from "lucide-react";
+
+async function finalizeAccount(user: { id: string; email?: string | null; user_metadata?: any }) {
+  // Create the user profile now that the email is confirmed
+  const fullName = user.user_metadata?.full_name;
+  await getOrCreateUserProfile(user.id, user.email ?? "", fullName).catch(
+    (err) => console.error("Profile creation error:", err)
+  );
+
+  // Save security question that was stored during signup
+  if (typeof window === "undefined") return;
+  const entries = Object.entries(sessionStorage).filter(([k]) => k.startsWith("secq_"));
+  if (!entries.length) return;
+  const [key, securityQuestion] = entries[0];
+  const emailKey = key.replace("secq_", "");
+  const securityAnswer = sessionStorage.getItem(`seca_${emailKey}`);
+  if (!securityQuestion || !securityAnswer) return;
+  try {
+    await supabase
+      .from("users")
+      .update({ security_question: securityQuestion, security_answer: securityAnswer })
+      .eq("id", user.id);
+  } catch (err) {
+    console.error("Failed to save security question:", err);
+  }
+  sessionStorage.removeItem(`secq_${emailKey}`);
+  sessionStorage.removeItem(`seca_${emailKey}`);
+}
 
 function VerifyEmailContent() {
   const router = useRouter();
@@ -107,6 +135,7 @@ function VerifyEmailContent() {
         }
 
         if (emailData.user) {
+          await finalizeAccount(emailData.user);
           setSuccess(true);
           setTimeout(() => {
             window.location.href = "/dashboard";
@@ -116,6 +145,7 @@ function VerifyEmailContent() {
       }
 
       if (data.user) {
+        await finalizeAccount(data.user);
         setSuccess(true);
         setTimeout(() => {
           window.location.href = "/dashboard";

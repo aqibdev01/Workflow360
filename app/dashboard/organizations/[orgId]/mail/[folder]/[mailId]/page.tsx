@@ -7,6 +7,7 @@ import {
   Reply,
   Forward,
   Archive,
+  ArchiveRestore,
   Trash2,
   Star,
   Download,
@@ -27,7 +28,9 @@ import {
   starMail,
   unstarMail,
   archiveMail,
+  unarchiveMail,
   trashMail,
+  trashSentMail,
   deleteSentMail,
   getAttachmentUrl,
   type MailMessage,
@@ -125,20 +128,49 @@ export default function MailDetailPage() {
   };
 
   const handleArchive = async () => {
-    await archiveMail(mailId);
-    toast.success("Mail archived");
-    router.push(`/dashboard/organizations/${orgId}/mail/${folder}`);
+    try {
+      await archiveMail(mailId);
+      toast.success("Mail archived");
+      router.push(`/dashboard/organizations/${orgId}/mail/archived`);
+    } catch {
+      toast.error("Failed to archive mail");
+    }
   };
 
   const handleTrash = async () => {
-    if (folder === "sent") {
-      await deleteSentMail(mailId);
-      toast.success("Sent mail deleted");
-    } else {
-      await trashMail(mailId);
-      toast.success("Moved to trash");
+    try {
+      if (folder === "sent") {
+        await trashSentMail(mailId);
+        toast.success("Moved to trash");
+        router.push(`/dashboard/organizations/${orgId}/mail/sent`);
+      } else {
+        await trashMail(mailId);
+        toast.success("Moved to trash");
+        router.push(`/dashboard/organizations/${orgId}/mail/trash`);
+      }
+    } catch {
+      toast.error("Failed to move to trash");
     }
-    router.push(`/dashboard/organizations/${orgId}/mail/${folder}`);
+  };
+
+  const handleUnarchive = async () => {
+    try {
+      await unarchiveMail(mailId);
+      toast.success("Moved back to inbox");
+      router.push(`/dashboard/organizations/${orgId}/mail/inbox`);
+    } catch {
+      toast.error("Failed to unarchive mail");
+    }
+  };
+
+  const handleDeletePermanently = async () => {
+    try {
+      await deleteSentMail(mailId);
+      toast.success("Deleted permanently");
+      router.push(`/dashboard/organizations/${orgId}/mail/trash`);
+    } catch {
+      toast.error("Failed to delete mail");
+    }
   };
 
   const handleDownloadAttachment = async (storagePath: string, fileName: string) => {
@@ -232,12 +264,26 @@ export default function MailDetailPage() {
               className={`h-4 w-4 ${isStarred ? "fill-amber-400 text-amber-400" : "text-muted-foreground"}`}
             />
           </Button>
-          <Button variant="ghost" size="sm" onClick={handleArchive}>
-            <Archive className="h-4 w-4 text-muted-foreground" />
-          </Button>
-          <Button variant="ghost" size="sm" onClick={handleTrash}>
-            <Trash2 className="h-4 w-4 text-muted-foreground" />
-          </Button>
+          {folder === "archived" ? (
+            <Button variant="ghost" size="sm" onClick={handleUnarchive} className="gap-2">
+              <ArchiveRestore className="h-4 w-4 text-muted-foreground" />
+              Unarchive
+            </Button>
+          ) : (
+            <Button variant="ghost" size="sm" onClick={handleArchive}>
+              <Archive className="h-4 w-4 text-muted-foreground" />
+            </Button>
+          )}
+          {folder === "trash" ? (
+            <Button variant="ghost" size="sm" onClick={handleDeletePermanently} className="gap-2 text-destructive">
+              <Trash2 className="h-4 w-4" />
+              Delete Forever
+            </Button>
+          ) : (
+            <Button variant="ghost" size="sm" onClick={handleTrash}>
+              <Trash2 className="h-4 w-4 text-muted-foreground" />
+            </Button>
+          )}
         </div>
       </div>
 

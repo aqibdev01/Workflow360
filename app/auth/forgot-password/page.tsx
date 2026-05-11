@@ -1,11 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Card } from "@/components/ui/card";
+import { supabase } from "@/lib/supabase";
 import { Logo } from "@/components/Logo";
 import {
   ArrowLeft,
@@ -18,55 +15,72 @@ import {
   Eye,
   EyeOff,
   Mail,
-  ShieldQuestion,
   CheckCircle2,
-  User,
+  RefreshCw,
 } from "lucide-react";
 
-const SECURITY_QUESTIONS = [
-  "What was the name of your first pet?",
-  "What city were you born in?",
-  "What is your mother's maiden name?",
-  "What was the name of your first school?",
-  "What is your favorite movie?",
-];
+type Step = "email" | "otp" | "password" | "success";
 
-type Step = "email" | "question" | "password" | "success";
+function PasswordRequirement({ met, text }: { met: boolean; text: string }) {
+  return (
+    <div className="flex items-center gap-2">
+      {met ? (
+        <Check className="h-3.5 w-3.5 text-emerald-500" />
+      ) : (
+        <X className="h-3.5 w-3.5 text-slate-400" />
+      )}
+      <span className={`text-xs ${met ? "text-emerald-600" : "text-slate-400"}`}>{text}</span>
+    </div>
+  );
+}
 
 export default function ForgotPasswordPage() {
   const [step, setStep] = useState<Step>("email");
   const [email, setEmail] = useState("");
-  const [securityQuestion, setSecurityQuestion] = useState("");
-  const [securityAnswer, setSecurityAnswer] = useState("");
-  const [isFallback, setIsFallback] = useState(false); // true for legacy accounts (no security question)
-  const [fullName, setFullName] = useState(""); // fallback verification
-  const [newSecurityQuestion, setNewSecurityQuestion] = useState(""); // legacy users must set one
-  const [newSecurityAnswer, setNewSecurityAnswer] = useState("");
+  const [otp, setOtp] = useState(["", "", "", "", "", ""]);
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [resendCooldown, setResendCooldown] = useState(0);
+  const [resending, setResending] = useState(false);
 
-  // Password requirements
+  const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
+
+  // Password checks
   const hasMinLength = password.length >= 8;
   const hasUppercase = /[A-Z]/.test(password);
   const hasLowercase = /[a-z]/.test(password);
   const hasNumber = /[0-9]/.test(password);
-  const passwordsMatch = password === confirmPassword && confirmPassword.length > 0;
+  const hasSpecial = /[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(password);
   const isValidPassword = hasMinLength && hasUppercase && hasLowercase && hasNumber;
+  const passwordsMatch = password === confirmPassword && confirmPassword.length > 0;
 
-  // Auto-redirect on success
+  // Resend cooldown timer
   useEffect(() => {
-    if (step === "success") {
-      const timer = setTimeout(() => {
-        window.location.href = "/auth/login";
-      }, 2000);
-      return () => clearTimeout(timer);
+    if (resendCooldown > 0) {
+      const t = setTimeout(() => setResendCooldown((c) => c - 1), 1000);
+      return () => clearTimeout(t);
+    }
+  }, [resendCooldown]);
+
+  // Auto-focus first OTP input when step changes to otp
+  useEffect(() => {
+    if (step === "otp") {
+      setTimeout(() => inputRefs.current[0]?.focus(), 50);
     }
   }, [step]);
 
-  // Step 1: Enter email, fetch security question
+  // Redirect on success
+  useEffect(() => {
+    if (step === "success") {
+      const t = setTimeout(() => { window.location.href = "/auth/login"; }, 2500);
+      return () => clearTimeout(t);
+    }
+  }, [step]);
+
+  // ── Step 1: Send OTP ──────────────────────────────────────────────────────
   const handleEmailSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
@@ -77,59 +91,104 @@ export default function ForgotPasswordPage() {
     }
 
     setLoading(true);
-
     try {
-      const res = await fetch("/api/get-security-question", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: email.trim() }),
-      });
+      const { error: resetError } = await supabase.auth.resetPasswordForEmail(
+        email.trim(),
+        { redirectTo: undefined as any }
+      );
 
-      const data = await res.json();
-
-      if (!res.ok) {
-        setError(data.error || "Failed to find account");
+      if (resetError) {
+        const msg = resetError.message?.toLowerCase() ?? "";
+        if (msg.includes("not found") || msg.includes("user") || msg.includes("email")) {
+          setError("No account found with this email address.");
+        } else {
+          setError(resetError.message);
+        }
         return;
       }
 
-      if (data.fallback) {
-        // Legacy account — no security question, use name verification
-        setIsFallback(true);
-        setSecurityQuestion("");
-      } else {
-        setIsFallback(false);
-        setSecurityQuestion(data.question);
-      }
-      setStep("question");
-    } catch (err) {
-      setError("Something went wrong. Please try again.");
+      setResendCooldown(60);
+      setStep("otp");
+    } catch (err: any) {
+      setError(err?.message || "Something went wrong. Please try again.");
     } finally {
       setLoading(false);
     }
   };
 
-  // Step 2: Verify identity and move to password step
-  const handleVerifyIdentity = async (e: React.FormEvent) => {
-    e.preventDefault();
+  // ── Resend OTP ────────────────────────────────────────────────────────────
+  const handleResend = async () => {
+    if (resendCooldown > 0) return;
+    setResending(true);
     setError("");
-
-    if (isFallback) {
-      if (!fullName.trim() || fullName.trim().length < 2) {
-        setError("Please enter your full name");
-        return;
-      }
-    } else {
-      if (!securityAnswer.trim() || securityAnswer.trim().length < 2) {
-        setError("Please enter your security answer");
-        return;
-      }
+    try {
+      await supabase.auth.resetPasswordForEmail(email.trim(), {
+        redirectTo: undefined as any,
+      });
+      setResendCooldown(60);
+      setOtp(["", "", "", "", "", ""]);
+      setTimeout(() => inputRefs.current[0]?.focus(), 50);
+    } catch {
+      setError("Failed to resend code. Please try again.");
+    } finally {
+      setResending(false);
     }
-
-    setStep("password");
   };
 
-  // Step 3: Reset password via API
-  const handleResetPassword = async (e: React.FormEvent) => {
+  // ── OTP input handlers ───────────────────────────────────────────────────
+  const handleOtpChange = (index: number, value: string) => {
+    if (value && !/^\d+$/.test(value)) return;
+    const next = [...otp];
+    if (value.length > 1) {
+      const pasted = value.slice(0, 6).split("");
+      pasted.forEach((ch, i) => { if (i < 6) next[i] = ch; });
+      setOtp(next);
+      inputRefs.current[Math.min(pasted.length, 5)]?.focus();
+      return;
+    }
+    next[index] = value;
+    setOtp(next);
+    if (value && index < 5) inputRefs.current[index + 1]?.focus();
+  };
+
+  const handleOtpKeyDown = (index: number, e: React.KeyboardEvent) => {
+    if (e.key === "Backspace" && !otp[index] && index > 0) {
+      inputRefs.current[index - 1]?.focus();
+    }
+  };
+
+  // ── Step 2: Verify OTP ───────────────────────────────────────────────────
+  const handleOtpSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const code = otp.join("");
+    if (code.length !== 6) {
+      setError("Please enter the complete 6-digit code");
+      return;
+    }
+    setError("");
+    setLoading(true);
+    try {
+      const { error: verifyError } = await supabase.auth.verifyOtp({
+        email: email.trim(),
+        token: code,
+        type: "recovery",
+      });
+
+      if (verifyError) {
+        setError("Invalid or expired code. Please try again.");
+        return;
+      }
+
+      setStep("password");
+    } catch (err: any) {
+      setError(err?.message || "Verification failed. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // ── Step 3: Set new password ─────────────────────────────────────────────
+  const handlePasswordSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
 
@@ -137,506 +196,317 @@ export default function ForgotPasswordPage() {
       setError("Please meet all password requirements");
       return;
     }
-
     if (!passwordsMatch) {
       setError("Passwords do not match");
       return;
     }
 
-    // For legacy fallback, require setting a security question for future resets
-    if (isFallback) {
-      if (!newSecurityQuestion) {
-        setError("Please select a security question for future use");
-        return;
-      }
-      if (!newSecurityAnswer.trim() || newSecurityAnswer.trim().length < 2) {
-        setError("Please enter an answer for your security question");
-        return;
-      }
-    }
-
     setLoading(true);
-
     try {
-      const body: Record<string, string> = {
-        email: email.trim(),
-        newPassword: password,
-      };
-
-      if (isFallback) {
-        body.fullName = fullName.trim();
-        body.securityQuestion = newSecurityQuestion;
-        body.newSecurityAnswer = newSecurityAnswer.trim();
-      } else {
-        body.securityAnswer = securityAnswer.trim();
-      }
-
-      const res = await fetch("/api/reset-password", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        if (res.status === 403) {
-          setStep("question");
-          if (isFallback) setFullName("");
-          else setSecurityAnswer("");
-        }
-        setError(data.error || "Failed to reset password");
+      const { error: updateError } = await supabase.auth.updateUser({ password });
+      if (updateError) {
+        setError(updateError.message);
         return;
       }
-
+      await supabase.auth.signOut();
       setStep("success");
-    } catch (err) {
-      setError("Something went wrong. Please try again.");
+    } catch (err: any) {
+      setError(err?.message || "Failed to update password. Please try again.");
     } finally {
       setLoading(false);
     }
   };
 
-  // Step indicators config
-  const steps = [
-    { key: "email", label: "1" },
-    { key: "question", label: "2" },
-    { key: "password", label: "3" },
-  ];
-  const stepOrder = ["email", "question", "password"];
+  // ── Step config ──────────────────────────────────────────────────────────
+  const stepOrder: Step[] = ["email", "otp", "password"];
   const currentStepIndex = stepOrder.indexOf(step);
+  const stepLabels = ["1", "2", "3"];
 
-  // Success Screen
+  // ── Success ──────────────────────────────────────────────────────────────
   if (step === "success") {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-navy-900 via-navy-800 to-navy-900">
-        <nav className="fixed top-0 left-0 right-0 z-50 bg-slate-900/80 backdrop-blur-md border-b border-white/10">
-          <div className="container mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex justify-between items-center h-16">
-              <Link href="/" className="flex items-center space-x-3">
-                <Logo className="h-9 w-9" />
-                <span className="text-xl font-bold text-white">
-                  Workflow<span className="text-indigo-600">360</span>
-                </span>
-              </Link>
-            </div>
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 px-4">
+        <div className="w-full max-w-md bg-white dark:bg-slate-800 rounded-2xl shadow-2xl p-8 text-center space-y-4">
+          <div className="mx-auto w-16 h-16 bg-emerald-100 rounded-full flex items-center justify-center">
+            <CheckCircle2 className="h-8 w-8 text-emerald-600" />
           </div>
-        </nav>
-
-        <div className="flex items-center justify-center min-h-screen pt-16 pb-12 px-4">
-          <Card className="w-full max-w-md bg-white dark:bg-slate-800 border-0 shadow-2xl p-8">
-            <div className="text-center space-y-4">
-              <div className="mx-auto w-16 h-16 bg-green-100 rounded-full flex items-center justify-center">
-                <CheckCircle2 className="h-8 w-8 text-green-600" />
-              </div>
-              <h1 className="text-2xl font-bold text-foreground">Password Updated!</h1>
-              <p className="text-gray-600">
-                Your password has been changed successfully.
-              </p>
-              <p className="text-sm text-gray-500">
-                Redirecting to login...
-              </p>
-              <Loader2 className="h-5 w-5 animate-spin text-indigo-600 mx-auto" />
-              <Link href="/auth/login">
-                <Button className="mt-4 bg-indigo-600 hover:bg-indigo-600/90 text-white">
-                  Go to Login Now
-                </Button>
-              </Link>
-            </div>
-          </Card>
+          <h1 className="text-2xl font-bold text-foreground">Password Updated!</h1>
+          <p className="text-slate-500">Your password has been changed successfully.</p>
+          <p className="text-sm text-slate-400">Redirecting to login...</p>
+          <Loader2 className="h-5 w-5 animate-spin text-indigo-600 mx-auto" />
+          <Link
+            href="/auth/login"
+            className="inline-block mt-2 px-6 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-xl transition-colors"
+          >
+            Go to Login
+          </Link>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-navy-900 via-navy-800 to-navy-900">
-      <nav className="fixed top-0 left-0 right-0 z-50 bg-slate-900/80 backdrop-blur-md border-b border-white/10">
-        <div className="container mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-16">
-            <Link href="/" className="flex items-center space-x-3">
-              <Logo className="h-9 w-9" />
-              <span className="text-xl font-bold text-white">
-                Workflow<span className="text-indigo-600">360</span>
-              </span>
-            </Link>
-            <Link href="/auth/login">
-              <Button variant="ghost" size="sm" className="text-white/70 hover:text-white hover:bg-white/10">
-                <ArrowLeft className="h-4 w-4 mr-2" />
-                Back to Login
-              </Button>
-            </Link>
+    <div className="min-h-screen flex flex-col bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
+      {/* Navbar */}
+      <nav className="flex items-center justify-between px-6 py-4 border-b border-white/10">
+        <Link href="/" className="flex items-center gap-3">
+          <div className="bg-white p-1.5 rounded-lg">
+            <Logo className="h-7 w-7" />
           </div>
-        </div>
+          <span className="text-white font-bold text-lg">
+            Workflow<span className="font-extrabold">360</span>
+          </span>
+        </Link>
+        <Link
+          href="/auth/login"
+          className="flex items-center gap-2 text-white/70 hover:text-white text-sm font-medium transition-colors"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          Back to Login
+        </Link>
       </nav>
 
-      <div className="flex items-center justify-center min-h-screen pt-16 pb-12 px-4">
-        <Card className="w-full max-w-md bg-white dark:bg-slate-800 border-0 shadow-2xl p-8">
-          {/* Step Indicator */}
-          <div className="flex items-center justify-center gap-2 mb-6">
-            {steps.map((s, i) => (
-              <div key={s.key} className="flex items-center">
+      {/* Card */}
+      <div className="flex-1 flex items-center justify-center px-4 py-12">
+        <div className="w-full max-w-md bg-white dark:bg-slate-800 rounded-2xl shadow-2xl p-8">
+
+          {/* Step indicator */}
+          <div className="flex items-center justify-center gap-2 mb-8">
+            {stepLabels.map((label, i) => (
+              <div key={i} className="flex items-center">
                 <div
-                  className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${
+                  className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold transition-colors ${
                     currentStepIndex === i
                       ? "bg-indigo-600 text-white"
                       : currentStepIndex > i
-                      ? "bg-green-500 text-white"
-                      : "bg-gray-200 text-gray-500"
+                      ? "bg-emerald-500 text-white"
+                      : "bg-slate-100 dark:bg-slate-700 text-slate-400"
                   }`}
                 >
-                  {currentStepIndex > i ? (
-                    <Check className="h-4 w-4" />
-                  ) : (
-                    s.label
-                  )}
+                  {currentStepIndex > i ? <Check className="h-4 w-4" /> : label}
                 </div>
-                {i < steps.length - 1 && (
-                  <div
-                    className={`w-12 h-1 mx-1 ${
-                      currentStepIndex > i
-                        ? "bg-green-500"
-                        : "bg-gray-200"
-                    }`}
-                  />
+                {i < stepLabels.length - 1 && (
+                  <div className={`w-12 h-1 mx-1 rounded-full transition-colors ${currentStepIndex > i ? "bg-emerald-500" : "bg-slate-200 dark:bg-slate-700"}`} />
                 )}
               </div>
             ))}
           </div>
 
-          {/* Step 1: Enter Email */}
+          {/* ── Step 1: Email ── */}
           {step === "email" && (
-            <>
-              <div className="text-center space-y-2 mb-6">
-                <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-indigo-600/10 border border-indigo-500/20">
+            <form onSubmit={handleEmailSubmit} className="space-y-5">
+              <div className="text-center space-y-1 mb-6">
+                <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-indigo-50 dark:bg-indigo-900/30 mb-3">
                   <KeyRound className="h-4 w-4 text-indigo-600" />
-                  <span className="text-sm text-indigo-600 font-medium">Reset Password</span>
+                  <span className="text-sm font-semibold text-indigo-600">Reset Password</span>
                 </div>
-                <h1 className="text-2xl font-bold text-foreground mt-4">Find Your Account</h1>
-                <p className="text-gray-600 text-sm">
-                  Enter the email address associated with your account
-                </p>
+                <h1 className="text-2xl font-bold text-foreground">Find Your Account</h1>
+                <p className="text-sm text-slate-500">We'll send a 6-digit code to your email</p>
               </div>
 
-              <form onSubmit={handleEmailSubmit} className="space-y-4">
-                {error && (
-                  <div className="p-3 rounded-lg bg-red-50 border border-red-200 flex items-start gap-2">
-                    <AlertCircle className="h-5 w-5 text-red-500 mt-0.5 flex-shrink-0" />
-                    <span className="text-sm text-red-600">{error}</span>
-                  </div>
-                )}
-
-                <div className="space-y-2">
-                  <Label htmlFor="email" className="text-foreground">Email Address</Label>
-                  <div className="relative">
-                    <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
-                    <Input
-                      id="email"
-                      type="email"
-                      placeholder="you@example.com"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      disabled={loading}
-                      className="pl-10"
-                    />
-                  </div>
+              {error && (
+                <div className="p-3 rounded-xl bg-rose-50 dark:bg-rose-950/20 flex items-start gap-2">
+                  <AlertCircle className="h-4 w-4 text-rose-500 mt-0.5 shrink-0" />
+                  <span className="text-sm text-rose-600 dark:text-rose-400">{error}</span>
                 </div>
+              )}
 
-                <Button
-                  type="submit"
-                  disabled={loading}
-                  className="w-full bg-indigo-600 hover:bg-indigo-600/90 text-white"
-                >
-                  {loading ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Looking up account...
-                    </>
-                  ) : (
-                    "Continue"
-                  )}
-                </Button>
-              </form>
-
-              <div className="mt-6 text-center">
-                <p className="text-sm text-gray-500">
-                  Remember your password?{" "}
-                  <Link href="/auth/login" className="text-indigo-600 hover:underline font-medium">
-                    Sign in
-                  </Link>
-                </p>
+              <div className="space-y-2">
+                <label className="text-[0.6875rem] font-bold uppercase tracking-wider text-slate-400">
+                  Email Address
+                </label>
+                <div className="relative">
+                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                  <input
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="name@company.com"
+                    disabled={loading}
+                    className="w-full pl-10 pr-4 py-3 bg-slate-50 dark:bg-slate-700 border-none rounded-xl focus:ring-2 focus:ring-indigo-500 transition-all placeholder:text-slate-400 text-foreground"
+                  />
+                </div>
               </div>
-            </>
+
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full py-3 bg-gradient-to-r from-indigo-600 to-violet-600 text-white font-bold rounded-xl shadow-lg shadow-indigo-500/20 hover:shadow-indigo-500/30 active:scale-[0.98] transition-all flex items-center justify-center gap-2 disabled:opacity-60"
+              >
+                {loading ? <><Loader2 className="h-4 w-4 animate-spin" /> Sending code...</> : "Send Code"}
+              </button>
+
+              <p className="text-center text-sm text-slate-500">
+                Remember your password?{" "}
+                <Link href="/auth/login" className="font-semibold text-indigo-600 hover:text-violet-600 transition-colors">
+                  Sign in
+                </Link>
+              </p>
+            </form>
           )}
 
-          {/* Step 2: Verify Identity */}
-          {step === "question" && (
-            <>
-              <div className="text-center space-y-2 mb-6">
-                <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-indigo-600/10 border border-indigo-500/20">
-                  {isFallback ? (
-                    <User className="h-4 w-4 text-indigo-600" />
-                  ) : (
-                    <ShieldQuestion className="h-4 w-4 text-indigo-600" />
-                  )}
-                  <span className="text-sm text-indigo-600 font-medium">
-                    {isFallback ? "Identity Verification" : "Security Question"}
-                  </span>
+          {/* ── Step 2: OTP ── */}
+          {step === "otp" && (
+            <form onSubmit={handleOtpSubmit} className="space-y-5">
+              <div className="text-center space-y-1 mb-6">
+                <div className="mx-auto w-14 h-14 bg-indigo-50 dark:bg-indigo-900/30 rounded-full flex items-center justify-center mb-3">
+                  <Mail className="h-7 w-7 text-indigo-600" />
                 </div>
-                <h1 className="text-2xl font-bold text-foreground mt-4">Verify Your Identity</h1>
-                <p className="text-gray-600 text-sm">
-                  {isFallback
-                    ? "Enter the full name you used when signing up"
-                    : "Answer the security question you set during registration"}
+                <h1 className="text-2xl font-bold text-foreground">Check Your Email</h1>
+                <p className="text-sm text-slate-500">
+                  We sent a 6-digit code to
                 </p>
+                <p className="text-sm font-semibold text-indigo-600">{email}</p>
               </div>
 
-              <form onSubmit={handleVerifyIdentity} className="space-y-4">
-                {error && (
-                  <div className="p-3 rounded-lg bg-red-50 border border-red-200 flex items-start gap-2">
-                    <AlertCircle className="h-5 w-5 text-red-500 mt-0.5 flex-shrink-0" />
-                    <span className="text-sm text-red-600">{error}</span>
-                  </div>
-                )}
+              {error && (
+                <div className="p-3 rounded-xl bg-rose-50 dark:bg-rose-950/20 flex items-start gap-2">
+                  <AlertCircle className="h-4 w-4 text-rose-500 mt-0.5 shrink-0" />
+                  <span className="text-sm text-rose-600 dark:text-rose-400">{error}</span>
+                </div>
+              )}
 
-                {isFallback ? (
-                  <div className="space-y-2">
-                    <Label htmlFor="fullName" className="text-foreground">Full Name</Label>
-                    <div className="relative">
-                      <User className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
-                      <Input
-                        id="fullName"
-                        type="text"
-                        placeholder="Enter your full name as registered"
-                        value={fullName}
-                        onChange={(e) => setFullName(e.target.value)}
-                        disabled={loading}
-                        className="pl-10"
-                        autoFocus
-                      />
-                    </div>
-                    <p className="text-xs text-gray-500">
-                      This must match the name you used when signing up (not case-sensitive)
-                    </p>
-                  </div>
-                ) : (
-                  <>
-                    <div className="p-3 bg-gray-50 rounded-lg border border-gray-200">
-                      <p className="text-sm font-medium text-foreground">{securityQuestion}</p>
-                    </div>
+              {/* OTP boxes */}
+              <div className="flex justify-center gap-2">
+                {otp.map((digit, index) => (
+                  <input
+                    key={index}
+                    ref={(el) => { inputRefs.current[index] = el; }}
+                    type="text"
+                    inputMode="numeric"
+                    maxLength={6}
+                    value={digit}
+                    onChange={(e) => handleOtpChange(index, e.target.value)}
+                    onKeyDown={(e) => handleOtpKeyDown(index, e)}
+                    disabled={loading}
+                    className="w-11 h-13 text-center text-xl font-bold bg-slate-50 dark:bg-slate-700 border-2 border-transparent rounded-xl focus:border-indigo-500 focus:ring-0 focus:outline-none transition-all disabled:opacity-50"
+                    style={{ height: "52px" }}
+                  />
+                ))}
+              </div>
 
-                    <div className="space-y-2">
-                      <Label htmlFor="securityAnswer" className="text-foreground">Your Answer</Label>
-                      <div className="relative">
-                        <ShieldQuestion className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
-                        <Input
-                          id="securityAnswer"
-                          type="text"
-                          placeholder="Enter your answer"
-                          value={securityAnswer}
-                          onChange={(e) => setSecurityAnswer(e.target.value)}
-                          disabled={loading}
-                          className="pl-10"
-                          autoFocus
-                        />
-                      </div>
-                      <p className="text-xs text-gray-500">
-                        Answer is not case-sensitive
-                      </p>
-                    </div>
-                  </>
-                )}
+              <button
+                type="submit"
+                disabled={loading || otp.join("").length !== 6}
+                className="w-full py-3 bg-gradient-to-r from-indigo-600 to-violet-600 text-white font-bold rounded-xl shadow-lg shadow-indigo-500/20 hover:shadow-indigo-500/30 active:scale-[0.98] transition-all flex items-center justify-center gap-2 disabled:opacity-60"
+              >
+                {loading ? <><Loader2 className="h-4 w-4 animate-spin" /> Verifying...</> : "Verify Code"}
+              </button>
 
-                <Button
-                  type="submit"
-                  disabled={loading || (isFallback ? !fullName.trim() : !securityAnswer.trim())}
-                  className="w-full bg-indigo-600 hover:bg-indigo-600/90 text-white"
-                >
-                  Continue
-                </Button>
-
+              <div className="text-center space-y-2">
+                <p className="text-sm text-slate-500">Didn't receive the code?</p>
                 <button
                   type="button"
-                  onClick={() => {
-                    setStep("email");
-                    setError("");
-                    setSecurityAnswer("");
-                    setFullName("");
-                  }}
-                  className="w-full text-sm text-gray-500 hover:text-gray-700"
+                  onClick={handleResend}
+                  disabled={resending || resendCooldown > 0}
+                  className="flex items-center gap-2 mx-auto text-sm font-semibold text-indigo-600 hover:text-violet-600 transition-colors disabled:opacity-50"
                 >
-                  Go back
+                  {resending ? (
+                    <><Loader2 className="h-4 w-4 animate-spin" /> Sending...</>
+                  ) : resendCooldown > 0 ? (
+                    <><RefreshCw className="h-4 w-4" /> Resend in {resendCooldown}s</>
+                  ) : (
+                    <><RefreshCw className="h-4 w-4" /> Resend Code</>
+                  )}
                 </button>
-              </form>
-            </>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => { setStep("email"); setError(""); setOtp(["", "", "", "", "", ""]); }}
+                className="w-full text-sm text-slate-400 hover:text-slate-600 transition-colors"
+              >
+                Use a different email
+              </button>
+            </form>
           )}
 
-          {/* Step 3: New Password */}
+          {/* ── Step 3: New Password ── */}
           {step === "password" && (
-            <>
-              <div className="text-center space-y-2 mb-6">
-                <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-indigo-600/10 border border-indigo-500/20">
+            <form onSubmit={handlePasswordSubmit} className="space-y-4">
+              <div className="text-center space-y-1 mb-6">
+                <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-indigo-50 dark:bg-indigo-900/30 mb-3">
                   <Lock className="h-4 w-4 text-indigo-600" />
-                  <span className="text-sm text-indigo-600 font-medium">New Password</span>
+                  <span className="text-sm font-semibold text-indigo-600">New Password</span>
                 </div>
-                <h1 className="text-2xl font-bold text-foreground mt-4">Create New Password</h1>
-                <p className="text-gray-600 text-sm">
-                  Enter a strong password for your account
-                </p>
+                <h1 className="text-2xl font-bold text-foreground">Create New Password</h1>
+                <p className="text-sm text-slate-500">Choose a strong password for your account</p>
               </div>
 
-              <form onSubmit={handleResetPassword} className="space-y-4">
-                {error && (
-                  <div className="p-3 rounded-lg bg-red-50 border border-red-200 flex items-start gap-2">
-                    <AlertCircle className="h-5 w-5 text-red-500 mt-0.5 flex-shrink-0" />
-                    <span className="text-sm text-red-600">{error}</span>
-                  </div>
-                )}
-
-                <div className="space-y-2">
-                  <Label htmlFor="password" className="text-foreground">New Password</Label>
-                  <div className="relative">
-                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
-                    <Input
-                      id="password"
-                      type={showPassword ? "text" : "password"}
-                      placeholder="Enter new password"
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      disabled={loading}
-                      className="pl-10 pr-10"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                    >
-                      {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
-                    </button>
-                  </div>
+              {error && (
+                <div className="p-3 rounded-xl bg-rose-50 dark:bg-rose-950/20 flex items-start gap-2">
+                  <AlertCircle className="h-4 w-4 text-rose-500 mt-0.5 shrink-0" />
+                  <span className="text-sm text-rose-600 dark:text-rose-400">{error}</span>
                 </div>
+              )}
 
-                {password.length > 0 && (
-                  <div className="p-3 bg-gray-50 rounded-lg space-y-2">
-                    <p className="text-xs font-medium text-gray-700">Password requirements:</p>
-                    <div className="grid grid-cols-2 gap-2">
-                      <div className="flex items-center gap-2">
-                        {hasMinLength ? <Check className="h-4 w-4 text-green-500" /> : <X className="h-4 w-4 text-gray-300" />}
-                        <span className={`text-xs ${hasMinLength ? "text-green-600" : "text-gray-500"}`}>8+ characters</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        {hasUppercase ? <Check className="h-4 w-4 text-green-500" /> : <X className="h-4 w-4 text-gray-300" />}
-                        <span className={`text-xs ${hasUppercase ? "text-green-600" : "text-gray-500"}`}>Uppercase</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        {hasLowercase ? <Check className="h-4 w-4 text-green-500" /> : <X className="h-4 w-4 text-gray-300" />}
-                        <span className={`text-xs ${hasLowercase ? "text-green-600" : "text-gray-500"}`}>Lowercase</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        {hasNumber ? <Check className="h-4 w-4 text-green-500" /> : <X className="h-4 w-4 text-gray-300" />}
-                        <span className={`text-xs ${hasNumber ? "text-green-600" : "text-gray-500"}`}>Number</span>
-                      </div>
+              <div className="space-y-2">
+                <label className="text-[0.6875rem] font-bold uppercase tracking-wider text-slate-400">
+                  New Password
+                </label>
+                <div className="relative">
+                  <input
+                    type={showPassword ? "text" : "password"}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="Create a strong password"
+                    disabled={loading}
+                    className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-700 border-none rounded-xl focus:ring-2 focus:ring-indigo-500 transition-all placeholder:text-slate-400 text-foreground pr-10"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-foreground transition-colors"
+                  >
+                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
+              </div>
+
+              {password.length > 0 && (
+                <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-700/50 space-y-1.5">
+                  <p className="text-xs font-bold text-foreground mb-2">Password must have:</p>
+                  <PasswordRequirement met={hasMinLength} text="At least 8 characters" />
+                  <PasswordRequirement met={hasUppercase} text="One uppercase letter" />
+                  <PasswordRequirement met={hasLowercase} text="One lowercase letter" />
+                  <PasswordRequirement met={hasNumber} text="One number" />
+                  <PasswordRequirement met={hasSpecial} text="One special character" />
+                </div>
+              )}
+
+              <div className="space-y-2">
+                <label className="text-[0.6875rem] font-bold uppercase tracking-wider text-slate-400">
+                  Confirm Password
+                </label>
+                <div className="relative">
+                  <input
+                    type="password"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    placeholder="Re-enter your password"
+                    disabled={loading}
+                    className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-700 border-none rounded-xl focus:ring-2 focus:ring-indigo-500 transition-all placeholder:text-slate-400 text-foreground"
+                  />
+                  {confirmPassword.length > 0 && (
+                    <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                      {passwordsMatch
+                        ? <Check className="h-4 w-4 text-emerald-500" />
+                        : <X className="h-4 w-4 text-rose-500" />}
                     </div>
-                  </div>
-                )}
-
-                <div className="space-y-2">
-                  <Label htmlFor="confirmPassword" className="text-foreground">Confirm Password</Label>
-                  <div className="relative">
-                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
-                    <Input
-                      id="confirmPassword"
-                      type="password"
-                      placeholder="Confirm new password"
-                      value={confirmPassword}
-                      onChange={(e) => setConfirmPassword(e.target.value)}
-                      disabled={loading}
-                      className={`pl-10 ${
-                        confirmPassword.length > 0
-                          ? passwordsMatch
-                            ? "border-green-500"
-                            : "border-red-500"
-                          : ""
-                      }`}
-                    />
-                  </div>
-                  {confirmPassword.length > 0 && !passwordsMatch && (
-                    <p className="text-xs text-red-500">Passwords do not match</p>
                   )}
                 </div>
+              </div>
 
-                {/* Legacy users: set a security question for future resets */}
-                {isFallback && (
-                  <>
-                    <div className="p-3 bg-amber-50 rounded-lg border border-amber-200">
-                      <p className="text-xs text-amber-700 font-medium">
-                        Please set a security question for future password resets
-                      </p>
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label htmlFor="newSecurityQuestion" className="text-foreground">Security Question</Label>
-                      <select
-                        id="newSecurityQuestion"
-                        value={newSecurityQuestion}
-                        onChange={(e) => setNewSecurityQuestion(e.target.value)}
-                        disabled={loading}
-                        className="flex h-10 w-full rounded-md border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
-                      >
-                        <option value="">Select a security question...</option>
-                        {SECURITY_QUESTIONS.map((q) => (
-                          <option key={q} value={q}>{q}</option>
-                        ))}
-                      </select>
-                    </div>
-
-                    {newSecurityQuestion && (
-                      <div className="space-y-2">
-                        <Label htmlFor="newSecurityAnswer" className="text-foreground">Security Answer</Label>
-                        <Input
-                          id="newSecurityAnswer"
-                          type="text"
-                          placeholder="Enter your answer"
-                          value={newSecurityAnswer}
-                          onChange={(e) => setNewSecurityAnswer(e.target.value)}
-                          disabled={loading}
-                        />
-                      </div>
-                    )}
-                  </>
-                )}
-
-                <Button
-                  type="submit"
-                  disabled={loading || !isValidPassword || !passwordsMatch || (isFallback && (!newSecurityQuestion || !newSecurityAnswer.trim()))}
-                  className="w-full bg-indigo-600 hover:bg-indigo-600/90 text-white"
-                >
-                  {loading ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Updating...
-                    </>
-                  ) : (
-                    "Reset Password"
-                  )}
-                </Button>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    setStep("question");
-                    setError("");
-                    setPassword("");
-                    setConfirmPassword("");
-                  }}
-                  className="w-full text-sm text-gray-500 hover:text-gray-700"
-                >
-                  Go back
-                </button>
-              </form>
-            </>
+              <button
+                type="submit"
+                disabled={loading || !isValidPassword || !passwordsMatch}
+                className="w-full py-3 bg-gradient-to-r from-indigo-600 to-violet-600 text-white font-bold rounded-xl shadow-lg shadow-indigo-500/20 hover:shadow-indigo-500/30 active:scale-[0.98] transition-all flex items-center justify-center gap-2 disabled:opacity-60"
+              >
+                {loading ? <><Loader2 className="h-4 w-4 animate-spin" /> Updating...</> : "Reset Password"}
+              </button>
+            </form>
           )}
-        </Card>
+        </div>
       </div>
     </div>
   );

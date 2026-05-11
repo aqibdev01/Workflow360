@@ -41,6 +41,26 @@ DO $$ BEGIN
 EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
 
+DO $$ BEGIN
+    CREATE TYPE decomposition_status AS ENUM ('none','suggested','partially_accepted','fully_accepted');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$ BEGIN
+    CREATE TYPE skill_level AS ENUM ('beginner','intermediate','expert');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$ BEGIN
+    CREATE TYPE decomposition_review_status AS ENUM ('pending','accepted','partially_accepted','rejected');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$ BEGIN
+    CREATE TYPE risk_level AS ENUM ('low','medium','high','critical');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
 -- =====================================================
 -- USERS TABLE
 -- =====================================================
@@ -127,6 +147,11 @@ CREATE POLICY "Org admins can view join requests"
         )
     );
 
+-- Authenticated users can insert their own join requests
+CREATE POLICY "Users can insert their own join requests"
+    ON public.organization_join_requests FOR INSERT
+    WITH CHECK (user_id = auth.uid());
+
 -- =====================================================
 -- PROJECTS TABLE
 -- =====================================================
@@ -191,9 +216,15 @@ CREATE TABLE IF NOT EXISTS public.sprints (
     start_date TIMESTAMPTZ NOT NULL,
     end_date TIMESTAMPTZ NOT NULL,
     status sprint_status NOT NULL DEFAULT 'planned',
+    velocity NUMERIC(5,1),
+    capacity NUMERIC(5,1),
+    ai_risk_score NUMERIC(3,2),
+    ai_risk_factors JSONB,
+    ai_analyzed_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW(),
-    CONSTRAINT valid_date_range CHECK (end_date > start_date)
+    CONSTRAINT valid_date_range CHECK (end_date > start_date),
+    CONSTRAINT sprints_ai_risk_score_range CHECK (ai_risk_score IS NULL OR (ai_risk_score >= 0.00 AND ai_risk_score <= 1.00))
 );
 
 CREATE INDEX IF NOT EXISTS sprints_project_id_idx ON public.sprints(project_id);
@@ -216,7 +247,20 @@ CREATE TABLE IF NOT EXISTS public.tasks (
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW(),
     due_date TIMESTAMPTZ,
-    completed_at TIMESTAMPTZ
+    completed_at TIMESTAMPTZ,
+    story_points SMALLINT,
+    estimated_days NUMERIC(4,1),
+    actual_days NUMERIC(4,1),
+    tags TEXT[] DEFAULT '{}',
+    complexity_score NUMERIC(3,2),
+    ai_suggested_assignee_id UUID REFERENCES auth.users(id) ON DELETE SET NULL,
+    ai_assignee_confidence NUMERIC(3,2),
+    parent_task_id UUID REFERENCES public.tasks(id) ON DELETE SET NULL,
+    is_ai_generated BOOLEAN DEFAULT FALSE,
+    decomposition_status decomposition_status DEFAULT 'none',
+    CONSTRAINT tasks_story_points_fibonacci CHECK (story_points IS NULL OR story_points IN (1,2,3,5,8,13)),
+    CONSTRAINT tasks_complexity_score_range CHECK (complexity_score IS NULL OR (complexity_score >= 0.00 AND complexity_score <= 1.00)),
+    CONSTRAINT tasks_ai_assignee_confidence_range CHECK (ai_assignee_confidence IS NULL OR (ai_assignee_confidence >= 0.00 AND ai_assignee_confidence <= 1.00))
 );
 
 CREATE INDEX IF NOT EXISTS tasks_project_id_idx ON public.tasks(project_id);
@@ -225,6 +269,170 @@ CREATE INDEX IF NOT EXISTS tasks_status_idx ON public.tasks(status);
 CREATE INDEX IF NOT EXISTS tasks_priority_idx ON public.tasks(priority);
 CREATE INDEX IF NOT EXISTS tasks_assignee_id_idx ON public.tasks(assignee_id);
 CREATE INDEX IF NOT EXISTS tasks_created_by_idx ON public.tasks(created_by);
+CREATE INDEX IF NOT EXISTS tasks_parent_task_id_idx ON public.tasks(parent_task_id);
+CREATE INDEX IF NOT EXISTS tasks_assignee_status_idx ON public.tasks(assignee_id, status);
+CREATE INDEX IF NOT EXISTS tasks_sprint_status_idx ON public.tasks(sprint_id, status);
+
+-- =====================================================
+-- USER SKILLS TABLE
+-- =====================================================
+CREATE TABLE IF NOT EXISTS public.user_skills (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+    skill TEXT NOT NULL,
+    level skill_level NOT NULL DEFAULT 'intermediate',
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    CONSTRAINT user_skills_unique UNIQUE (user_id, skill)
+);
+
+CREATE INDEX IF NOT EXISTS user_skills_user_id_idx ON public.user_skills(user_id);
+CREATE INDEX IF NOT EXISTS user_skills_skill_idx ON public.user_skills(skill);
+
+ALTER TABLE public.user_skills ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can manage own skills"
+    ON public.user_skills FOR ALL
+    USING (auth.uid() = user_id)
+    WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "Project members can view teammate skills"
+    ON public.user_skills FOR SELECT
+    USING (
+        EXISTS (
+            SELECT 1 FROM public.project_members pm1
+            JOIN public.project_members pm2 ON pm1.project_id = pm2.project_id
+            WHERE pm1.user_id = auth.uid()
+              AND pm2.user_id = user_skills.user_id
+        )
+    );
+
+-- =====================================================
+-- AI TASK DECOMPOSITIONS TABLE
+-- =====================================================
+CREATE TABLE IF NOT EXISTS public.ai_task_decompositions (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    parent_task_id UUID NOT NULL REFERENCES public.tasks(id) ON DELETE CASCADE,
+    suggested_subtasks JSONB NOT NULL,
+    model_version TEXT NOT NULL,
+    confidence_score NUMERIC(3,2),
+    status decomposition_review_status NOT NULL DEFAULT 'pending',
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    reviewed_at TIMESTAMPTZ,
+    reviewed_by UUID REFERENCES auth.users(id) ON DELETE SET NULL,
+    CONSTRAINT ai_decompositions_confidence_range CHECK (confidence_score IS NULL OR (confidence_score >= 0.00 AND confidence_score <= 1.00))
+);
+
+CREATE INDEX IF NOT EXISTS ai_decompositions_parent_task_idx ON public.ai_task_decompositions(parent_task_id);
+
+ALTER TABLE public.ai_task_decompositions ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Project members can view decompositions"
+    ON public.ai_task_decompositions FOR SELECT
+    USING (
+        EXISTS (
+            SELECT 1 FROM public.tasks t
+            JOIN public.project_members pm ON pm.project_id = t.project_id
+            WHERE t.id = ai_task_decompositions.parent_task_id
+              AND pm.user_id = auth.uid()
+        )
+    );
+
+CREATE POLICY "Project leads can manage decompositions"
+    ON public.ai_task_decompositions FOR ALL
+    USING (
+        EXISTS (
+            SELECT 1 FROM public.tasks t
+            JOIN public.project_members pm ON pm.project_id = t.project_id
+            WHERE t.id = ai_task_decompositions.parent_task_id
+              AND pm.user_id = auth.uid()
+              AND pm.role IN ('owner', 'lead')
+        )
+    );
+
+-- =====================================================
+-- AI ASSIGNMENT LOGS TABLE
+-- =====================================================
+CREATE TABLE IF NOT EXISTS public.ai_assignment_logs (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    task_id UUID NOT NULL REFERENCES public.tasks(id) ON DELETE CASCADE,
+    suggested_assignee_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+    confidence_score NUMERIC(3,2),
+    scoring_breakdown JSONB,
+    was_accepted BOOLEAN,
+    final_assignee_id UUID REFERENCES auth.users(id) ON DELETE SET NULL,
+    model_version TEXT NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    CONSTRAINT ai_assignment_confidence_range CHECK (confidence_score IS NULL OR (confidence_score >= 0.00 AND confidence_score <= 1.00))
+);
+
+CREATE INDEX IF NOT EXISTS ai_assignment_task_id_idx ON public.ai_assignment_logs(task_id);
+
+ALTER TABLE public.ai_assignment_logs ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Project members can view assignment logs"
+    ON public.ai_assignment_logs FOR SELECT
+    USING (
+        EXISTS (
+            SELECT 1 FROM public.tasks t
+            JOIN public.project_members pm ON pm.project_id = t.project_id
+            WHERE t.id = ai_assignment_logs.task_id
+              AND pm.user_id = auth.uid()
+        )
+    );
+
+CREATE POLICY "Project leads can manage assignment logs"
+    ON public.ai_assignment_logs FOR ALL
+    USING (
+        EXISTS (
+            SELECT 1 FROM public.tasks t
+            JOIN public.project_members pm ON pm.project_id = t.project_id
+            WHERE t.id = ai_assignment_logs.task_id
+              AND pm.user_id = auth.uid()
+              AND pm.role IN ('owner', 'lead')
+        )
+    );
+
+-- =====================================================
+-- AI BOTTLENECK REPORTS TABLE
+-- =====================================================
+CREATE TABLE IF NOT EXISTS public.ai_bottleneck_reports (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    sprint_id UUID NOT NULL REFERENCES public.sprints(id) ON DELETE CASCADE,
+    project_id UUID NOT NULL REFERENCES public.projects(id) ON DELETE CASCADE,
+    risk_level risk_level NOT NULL,
+    risk_score NUMERIC(3,2),
+    bottlenecks JSONB NOT NULL,
+    recommendations JSONB,
+    model_version TEXT NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    CONSTRAINT ai_bottleneck_risk_score_range CHECK (risk_score IS NULL OR (risk_score >= 0.00 AND risk_score <= 1.00))
+);
+
+CREATE INDEX IF NOT EXISTS ai_bottleneck_sprint_id_idx ON public.ai_bottleneck_reports(sprint_id);
+CREATE INDEX IF NOT EXISTS ai_bottleneck_project_id_idx ON public.ai_bottleneck_reports(project_id);
+
+ALTER TABLE public.ai_bottleneck_reports ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Project members can view bottleneck reports"
+    ON public.ai_bottleneck_reports FOR SELECT
+    USING (
+        EXISTS (
+            SELECT 1 FROM public.project_members pm
+            WHERE pm.project_id = ai_bottleneck_reports.project_id
+              AND pm.user_id = auth.uid()
+        )
+    );
+
+CREATE POLICY "Project leads can manage bottleneck reports"
+    ON public.ai_bottleneck_reports FOR ALL
+    USING (
+        EXISTS (
+            SELECT 1 FROM public.project_members pm
+            WHERE pm.project_id = ai_bottleneck_reports.project_id
+              AND pm.user_id = auth.uid()
+              AND pm.role IN ('owner', 'lead')
+        )
+    );
 
 -- =====================================================
 -- SPRINT EVENTS TABLE (for meetings, milestones, etc.)
@@ -518,6 +726,7 @@ CREATE TABLE IF NOT EXISTS public.mail_messages (
     sender_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
     type TEXT NOT NULL DEFAULT 'direct' CHECK (type IN ('direct', 'announcement', 'newsletter')),
     is_draft BOOLEAN NOT NULL DEFAULT FALSE,
+    is_sender_trashed BOOLEAN NOT NULL DEFAULT FALSE,
     sent_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -1609,7 +1818,8 @@ CREATE POLICY "Mail sender can add recipients" ON public.mail_recipients FOR INS
         SELECT 1 FROM public.mail_messages WHERE mail_messages.id = mail_recipients.mail_id AND mail_messages.sender_id = auth.uid()
     ));
 CREATE POLICY "Recipients can update own rows" ON public.mail_recipients FOR UPDATE
-    USING (recipient_id = auth.uid());
+    USING (recipient_id = auth.uid())
+    WITH CHECK (recipient_id = auth.uid());
 CREATE POLICY "Recipients can delete own rows" ON public.mail_recipients FOR DELETE
     USING (recipient_id = auth.uid());
 
@@ -1695,15 +1905,12 @@ BEGIN
     WHERE org_id = v_org.id AND user_id = p_user_id;
 
     IF FOUND THEN
-        IF v_existing.status = 'pending' THEN
-            RETURN json_build_object(
-                'success', false,
-                'error', 'You already have a pending request to join this organization.'
-            );
-        ELSIF v_existing.status = 'approved' THEN
+        IF v_existing.status = 'approved' THEN
+            -- Shouldn't reach here (member row exists), but guard anyway
             RETURN json_build_object('success', false, 'error', 'You are already a member of this organization.');
         ELSE
-            -- Rejected — allow re-request
+            -- Pending OR rejected — refresh the request with a new timestamp
+            -- so the owner always sees the freshest request
             UPDATE public.organization_join_requests
             SET status       = 'pending',
                 requested_at = now(),
@@ -2013,6 +2220,7 @@ ALTER PUBLICATION supabase_realtime ADD TABLE public.direct_messages;
 ALTER PUBLICATION supabase_realtime ADD TABLE public.channel_members;
 ALTER PUBLICATION supabase_realtime ADD TABLE public.notifications;
 ALTER PUBLICATION supabase_realtime ADD TABLE public.mail_recipients;
+ALTER PUBLICATION supabase_realtime ADD TABLE public.organization_join_requests;
 
 -- =====================================================
 -- STORAGE BUCKETS

@@ -34,6 +34,17 @@ export interface AuthResponse<T> {
  * Register a new user with email and password
  * Creates auth user and profile in one transaction
  */
+function mapSignUpError(message: string): string {
+  const msg = (message ?? "").toLowerCase();
+  if (msg.includes("confirmation email") || msg.includes("sending") || msg.includes("smtp") || msg.includes("mail")) {
+    return "We couldn't send a confirmation email to this address. Please check the email and try again.";
+  }
+  if (msg.includes("already registered") || msg.includes("already exists") || msg.includes("user already")) {
+    return "An account with this email already exists. Try signing in instead.";
+  }
+  return message || "An unexpected error occurred";
+}
+
 export async function signUp(
   credentials: SignUpCredentials
 ): Promise<AuthResponse<User>> {
@@ -42,24 +53,24 @@ export async function signUp(
 
     console.log("🔐 Attempting sign up for:", email);
 
-    // Sign up user with Supabase Auth
-    // Note: For OTP-based verification, Supabase must be configured in the dashboard:
-    // 1. Go to Authentication > Email Templates > Confirm signup
-    // 2. Use {{ .Token }} in the template to include the 6-digit OTP code
-    const { data: authData, error: authError } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        data: {
-          full_name: fullName,
-        },
-        // Don't set emailRedirectTo - we want OTP verification, not magic links
-      },
-    });
+    // Sign up user with Supabase Auth (OTP mode — no emailRedirectTo)
+    let signUpResult: Awaited<ReturnType<typeof supabase.auth.signUp>>;
+    try {
+      signUpResult = await supabase.auth.signUp({
+        email,
+        password,
+        options: { data: { full_name: fullName } },
+      });
+    } catch (supabaseError: any) {
+      const raw: string = supabaseError?.message ?? "";
+      return { error: { message: mapSignUpError(raw) } };
+    }
+
+    const { data: authData, error: authError } = signUpResult;
 
     if (authError) {
       console.error("❌ Sign up error:", authError);
-      return { error: { message: authError.message, code: authError.code } };
+      return { error: { message: mapSignUpError(authError.message), code: authError.code } };
     }
 
     if (!authData.user) {
@@ -68,20 +79,13 @@ export async function signUp(
     }
 
     console.log("✅ Auth user created:", authData.user.id);
-    console.log("📧 Email confirmation required:", authData.user.email_confirmed_at === null);
 
-    // Create user profile with full_name. Fire-and-forget so slow networks
-    // don't block the signup flow — but full_name is now passed on creation.
-    getOrCreateUserProfile(authData.user.id, email, fullName).catch((profileError) => {
-      console.error("Background profile creation error:", profileError);
-    });
-
+    // Profile is created after OTP verification, not here.
     return { data: authData.user };
   } catch (error) {
     return {
       error: {
-        message:
-          error instanceof Error ? error.message : "An unknown error occurred",
+        message: error instanceof Error ? error.message : "An unknown error occurred",
       },
     };
   }
@@ -109,8 +113,21 @@ export async function signIn(
 
     if (error) {
       console.error("❌ Sign in error:", error);
-      console.error("Error code:", error.code);
-      console.error("Error message:", error.message);
+      const isInvalidCredentials =
+        error.code === "invalid_credentials" ||
+        error.message?.toLowerCase().includes("invalid login credentials");
+
+      if (isInvalidCredentials) {
+        const { data: existing } = await supabase
+          .from("users")
+          .select("id")
+          .eq("email", email)
+          .maybeSingle();
+        if (!existing) {
+          return { error: { message: "No account found with this email address.", code: "user_not_found" } };
+        }
+        return { error: { message: "Incorrect password. Please try again.", code: error.code } };
+      }
       return { error: { message: error.message, code: error.code } };
     }
 

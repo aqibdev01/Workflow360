@@ -1,10 +1,11 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
+import { Logo } from "@/components/Logo";
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Logo } from "@/components/Logo";
 import { useAuth } from "@/app/providers/AuthProvider";
 import {
   Users,
@@ -131,9 +132,11 @@ export default function Home() {
                   <ArrowRight className="ml-2 h-5 w-5" />
                 </Button>
               </Link>
-              <Button size="lg" variant="outline" className="border-gray-300 text-gray-700 hover:bg-gray-50">
-                Watch Demo
-              </Button>
+              <a href="https://drive.google.com/file/d/1afLfKQcj71f7OK8uJKxzskzB4ZChtZRt/view?usp=sharing" target="_blank" rel="noopener noreferrer">
+                <Button size="lg" variant="outline" className="border-gray-300 text-gray-700 hover:bg-gray-50">
+                  Watch Demo
+                </Button>
+              </a>
             </div>
 
             {/* Stats */}
@@ -314,11 +317,15 @@ export default function Home() {
       <footer className="border-t border-gray-100 py-12 px-4 sm:px-6 lg:px-8 bg-white">
         <div className="container mx-auto max-w-6xl">
           <div className="flex flex-col md:flex-row justify-between items-center gap-8">
-            <div className="flex items-center space-x-3">
-              <Logo className="h-7 w-7" />
-              <span className="text-lg font-bold text-gray-900">
-                Workflow<span className="text-blue-600">360</span>
-              </span>
+            <div className="flex items-center">
+              <Image
+                src="/workflowlogo.jpeg"
+                alt="Workflow360"
+                width={0}
+                height={0}
+                sizes="180px"
+                style={{ height: "38px", width: "auto" }}
+              />
             </div>
 
             <div className="flex gap-8 text-sm text-gray-600">

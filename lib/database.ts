@@ -193,21 +193,37 @@ export async function joinOrganizationByInviteCode(inviteCode: string, userId: s
 
 /**
  * Fetch all pending join requests for an organization (admin/manager only).
+ * Queries the table directly so RLS handles permission — avoids the brittle
+ * RAISE EXCEPTION path in the old RPC that was silently swallowed by callers.
  */
 export async function getOrgJoinRequests(orgId: string) {
-  const { data, error } = await supabase
-    .rpc("get_org_join_requests", { p_org_id: orgId } as any);
+  const { data, error } = await (supabase as any)
+    .from("organization_join_requests")
+    .select(`
+      id,
+      user_id,
+      status,
+      requested_at,
+      users!user_id ( email, full_name, avatar_url )
+    `)
+    .eq("org_id", orgId)
+    .eq("status", "pending")
+    .order("requested_at", { ascending: false });
 
-  if (error) throw error;
-  return (data ?? []) as {
-    id: string;
-    user_id: string;
-    status: string;
-    requested_at: string;
-    email: string;
-    full_name: string | null;
-    avatar_url: string | null;
-  }[];
+  if (error) {
+    console.error("getOrgJoinRequests error:", error);
+    throw error;
+  }
+
+  return (data ?? []).map((r: any) => ({
+    id: r.id as string,
+    user_id: r.user_id as string,
+    status: r.status as string,
+    requested_at: r.requested_at as string,
+    email: (r["users!user_id"]?.email ?? "") as string,
+    full_name: (r["users!user_id"]?.full_name ?? null) as string | null,
+    avatar_url: (r["users!user_id"]?.avatar_url ?? null) as string | null,
+  }));
 }
 
 /**

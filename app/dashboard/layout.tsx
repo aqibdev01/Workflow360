@@ -14,11 +14,9 @@ import {
   X,
   LogOut,
   Settings,
-  User,
   PanelLeftClose,
   PanelLeft,
   Home,
-  Search,
   Brain,
   Sun,
   Moon,
@@ -39,6 +37,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
 import { AlertBanner, AlertItem } from "@/components/dismissible-alert";
+import Image from "next/image";
 import { Logo } from "@/components/Logo";
 import { BreadcrumbProvider, BreadcrumbNav } from "@/components/breadcrumbs";
 import { NotificationBell } from "@/components/notifications/NotificationBell";
@@ -217,9 +216,11 @@ export default function DashboardLayout({
   // Theme toggle
   useEffect(() => {
     const saved = localStorage.getItem("theme");
-    if (saved === "dark" || (!saved && window.matchMedia("(prefers-color-scheme: dark)").matches)) {
+    if (saved === "dark") {
       setDarkMode(true);
       document.documentElement.classList.add("dark");
+    } else {
+      document.documentElement.classList.remove("dark");
     }
   }, []);
 
@@ -301,49 +302,35 @@ export default function DashboardLayout({
           {/* Brand Header */}
           <div
             className={`flex items-center ${
-              sidebarCollapsed ? "justify-center px-3" : "gap-3 px-5"
+              sidebarCollapsed ? "justify-center px-3" : "gap-3 px-4"
             } h-16 shrink-0`}
           >
-            <div className="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center text-white shrink-0">
+            {sidebarCollapsed ? (
+              /* Collapsed: same logo, no text */
               <Link href="/" title="Go to Landing Page">
-                <Logo className="h-5 w-5" />
+                <Logo className="h-8 w-8 shrink-0" />
               </Link>
-            </div>
-            {!sidebarCollapsed && (
-              <div className="flex flex-col min-w-0">
-                <span className="text-lg font-semibold tracking-tight text-indigo-700 dark:text-indigo-400 truncate">
-                  Workflow360
-                </span>
-                <span className="text-[0.625rem] font-bold uppercase text-slate-400 tracking-wider">
-                  Digital Curator
-                </span>
-              </div>
-            )}
-            {!sidebarCollapsed && (
-              <button
-                onClick={() => setSidebarOpen(false)}
-                className="ml-auto lg:hidden text-slate-400 hover:text-slate-600"
-              >
-                <X className="h-5 w-5" />
-              </button>
+            ) : (
+              /* Expanded: logo + text */
+              <>
+                <Link href="/" title="Go to Landing Page" className="flex items-center space-x-3 flex-1 min-w-0">
+                  <Logo className="h-8 w-8 shrink-0" />
+                  <span className="text-lg font-bold text-gray-900 dark:text-white truncate">
+                    Workflow<span className="text-blue-600">360</span>
+                  </span>
+                </Link>
+                <button
+                  onClick={() => setSidebarOpen(false)}
+                  className="lg:hidden text-slate-400 hover:text-slate-600 shrink-0"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </>
             )}
           </div>
 
-          {/* Search Trigger (Cmd+K) */}
-          {!sidebarCollapsed && (
-            <div className="px-4 mb-4">
-              <div className="flex items-center bg-slate-200/50 dark:bg-slate-800/50 rounded-lg px-3 py-1.5 gap-2 cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-800 transition-colors">
-                <Search className="h-3.5 w-3.5 text-slate-400" />
-                <span className="text-xs text-slate-500">Search...</span>
-                <span className="ml-auto text-[10px] bg-white dark:bg-slate-700 px-1.5 py-0.5 rounded shadow-sm text-slate-400 font-mono">
-                  ⌘K
-                </span>
-              </div>
-            </div>
-          )}
-
           {/* Navigation */}
-          <nav className="flex-1 overflow-y-auto no-scrollbar space-y-6 px-3 py-2">
+          <nav className="flex-1 min-h-0 overflow-y-auto no-scrollbar space-y-6 px-3 py-2 pb-6">
             {/* General Section */}
             <div>
               {!sidebarCollapsed && (
@@ -428,15 +415,6 @@ export default function DashboardLayout({
 
             {/* Right side actions */}
             <div className="ml-auto flex items-center gap-2">
-              {/* Search trigger */}
-              <div className="hidden md:flex items-center bg-surface-container-low dark:bg-slate-800 px-3 py-1.5 rounded-full text-slate-500 gap-2 cursor-pointer hover:bg-surface-container dark:hover:bg-slate-700 transition-colors">
-                <Search className="h-4 w-4" />
-                <span className="text-xs">Quick search...</span>
-                <span className="text-[10px] border border-slate-300 dark:border-slate-600 rounded px-1 ml-4 font-mono">
-                  ⌘K
-                </span>
-              </div>
-
               {/* Theme toggle */}
               <button
                 onClick={toggleTheme}
@@ -471,7 +449,10 @@ export default function DashboardLayout({
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-56">
                   <DropdownMenuLabel>
-                    {userProfile?.full_name || user?.email?.split("@")[0] || "User"}
+                    <div>{userProfile?.full_name || user?.email?.split("@")[0] || "User"}</div>
+                    {user?.email && (
+                      <div className="text-xs font-normal text-muted-foreground">{user.email}</div>
+                    )}
                   </DropdownMenuLabel>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem
@@ -480,13 +461,6 @@ export default function DashboardLayout({
                   >
                     <Home className="mr-2 h-4 w-4" />
                     Landing Page
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    className="cursor-pointer"
-                    onSelect={() => router.push("/dashboard/settings")}
-                  >
-                    <User className="mr-2 h-4 w-4" />
-                    Profile & Skills
                   </DropdownMenuItem>
                   <DropdownMenuItem
                     className="cursor-pointer"

@@ -12,6 +12,7 @@ export interface MailMessage {
   sender_id: string;
   type: "direct" | "announcement" | "newsletter";
   is_draft: boolean;
+  is_sender_trashed: boolean;
   sent_at: string | null;
   created_at: string;
   updated_at: string;
@@ -82,28 +83,31 @@ export async function getInboxMails(
   const from = (page - 1) * pageSize;
   const to = from + pageSize - 1;
 
-  const { data, error, count } = await (supabase as any)
+  const { data, error } = await (supabase as any)
     .from("mail_recipients")
     .select(
       `*, mail:mail_messages!mail_id(
         id, organization_id, subject, body, sender_id, type, is_draft, sent_at, created_at, updated_at,
         sender:users!sender_id(id, full_name, email, avatar_url)
-      )`,
-      { count: "exact" }
+      )`
     )
     .eq("recipient_id", user.id)
     .eq("folder", folder)
-    .eq("mail.is_draft", false)
-    .eq("mail.organization_id", orgId)
-    .order("received_at", { ascending: false })
-    .range(from, to);
+    .order("received_at", { ascending: false });
 
   if (error) throw error;
 
-  // Filter out any rows where mail join returned null (shouldn't happen, but safety)
-  const filtered = (data || []).filter((r: any) => r.mail !== null);
+  // Filter client-side by org and exclude drafts (avoids unreliable PostgREST embedded-resource filters)
+  const filtered = (data || []).filter(
+    (r: any) =>
+      r.mail !== null &&
+      r.mail.is_draft === false &&
+      r.mail.organization_id === orgId
+  );
 
-  return { mails: filtered as MailRecipient[], total: count || 0 };
+  const paginated = filtered.slice(from, from + pageSize);
+
+  return { mails: paginated as MailRecipient[], total: filtered.length };
 }
 
 // =====================================================
@@ -126,26 +130,30 @@ export async function getStarredMails(
   const from = (page - 1) * pageSize;
   const to = from + pageSize - 1;
 
-  const { data, error, count } = await (supabase as any)
+  const { data, error } = await (supabase as any)
     .from("mail_recipients")
     .select(
       `*, mail:mail_messages!mail_id(
         id, organization_id, subject, body, sender_id, type, is_draft, sent_at, created_at, updated_at,
         sender:users!sender_id(id, full_name, email, avatar_url)
-      )`,
-      { count: "exact" }
+      )`
     )
     .eq("recipient_id", user.id)
     .eq("is_starred", true)
     .neq("folder", "trash")
-    .eq("mail.is_draft", false)
-    .eq("mail.organization_id", orgId)
-    .order("received_at", { ascending: false })
-    .range(from, to);
+    .order("received_at", { ascending: false });
 
   if (error) throw error;
-  const filtered = (data || []).filter((r: any) => r.mail !== null);
-  return { mails: filtered as MailRecipient[], total: count || 0 };
+
+  const filtered = (data || []).filter(
+    (r: any) =>
+      r.mail !== null &&
+      r.mail.is_draft === false &&
+      r.mail.organization_id === orgId
+  );
+
+  const paginated = filtered.slice(from, from + pageSize);
+  return { mails: paginated as MailRecipient[], total: filtered.length };
 }
 
 // =====================================================
@@ -179,6 +187,7 @@ export async function getSentMails(
     .eq("sender_id", user.id)
     .eq("organization_id", orgId)
     .eq("is_draft", false)
+    .eq("is_sender_trashed", false)
     .order("sent_at", { ascending: false })
     .range(from, to);
 
@@ -614,11 +623,21 @@ export async function archiveMail(mailId: string): Promise<void> {
   } = await supabase.auth.getUser();
   if (!user) throw new Error("Not authenticated");
 
+  // Find the recipient row first
+  const { data: row, error: findErr } = await (supabase as any)
+    .from("mail_recipients")
+    .select("id")
+    .eq("mail_id", mailId)
+    .eq("recipient_id", user.id)
+    .maybeSingle();
+
+  if (findErr) throw findErr;
+  if (!row) throw new Error("Mail not found in your mailbox");
+
   const { error } = await (supabase as any)
     .from("mail_recipients")
     .update({ folder: "archived", is_archived: true })
-    .eq("mail_id", mailId)
-    .eq("recipient_id", user.id);
+    .eq("id", row.id);
 
   if (error) throw error;
 }
@@ -632,11 +651,21 @@ export async function trashMail(mailId: string): Promise<void> {
   } = await supabase.auth.getUser();
   if (!user) throw new Error("Not authenticated");
 
+  // Find the recipient row first
+  const { data: row, error: findErr } = await (supabase as any)
+    .from("mail_recipients")
+    .select("id")
+    .eq("mail_id", mailId)
+    .eq("recipient_id", user.id)
+    .maybeSingle();
+
+  if (findErr) throw findErr;
+  if (!row) throw new Error("Mail not found in your mailbox");
+
   const { error } = await (supabase as any)
     .from("mail_recipients")
     .update({ folder: "trash" })
-    .eq("mail_id", mailId)
-    .eq("recipient_id", user.id);
+    .eq("id", row.id);
 
   if (error) throw error;
 }
@@ -688,6 +717,77 @@ export async function deletePermanently(mailId: string): Promise<void> {
       .eq("id", mailId)
       .eq("sender_id", user.id);
   }
+}
+
+/**
+ * Soft-trash a sent mail (move to sender's trash view).
+ */
+export async function trashSentMail(mailId: string): Promise<void> {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
+
+  const { error } = await (supabase as any)
+    .from("mail_messages")
+    .update({ is_sender_trashed: true })
+    .eq("id", mailId)
+    .eq("sender_id", user.id);
+
+  if (error) throw error;
+}
+
+/**
+ * Get sent mails that the sender has moved to trash.
+ */
+export async function getTrashedSentMails(orgId: string): Promise<MailMessage[]> {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
+
+  const { data, error } = await (supabase as any)
+    .from("mail_messages")
+    .select(
+      `*, sender:users!sender_id(id, full_name, email, avatar_url),
+       recipients:mail_recipients(id, recipient_id, recipient_type, is_read,
+         user:users!recipient_id(id, full_name, email, avatar_url))`
+    )
+    .eq("sender_id", user.id)
+    .eq("organization_id", orgId)
+    .eq("is_draft", false)
+    .eq("is_sender_trashed", true)
+    .order("sent_at", { ascending: false });
+
+  if (error) throw error;
+  return (data || []) as MailMessage[];
+}
+
+/**
+ * Unarchive a mail — move it back to inbox.
+ */
+export async function unarchiveMail(mailId: string): Promise<void> {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
+
+  const { data: row, error: findErr } = await (supabase as any)
+    .from("mail_recipients")
+    .select("id")
+    .eq("mail_id", mailId)
+    .eq("recipient_id", user.id)
+    .maybeSingle();
+
+  if (findErr) throw findErr;
+  if (!row) throw new Error("Mail not found in your mailbox");
+
+  const { error } = await (supabase as any)
+    .from("mail_recipients")
+    .update({ folder: "inbox", is_archived: false })
+    .eq("id", row.id);
+
+  if (error) throw error;
 }
 
 /**

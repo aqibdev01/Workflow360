@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useEffect, useState, Suspense } from "react";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -25,9 +25,10 @@ import { OrgMemberTable } from "@/components/org/OrgMemberTable";
 import { JoinRequestsPanel, type JoinRequest } from "@/components/org/JoinRequestsPanel";
 import { Skeleton } from "@/components/ui/skeleton";
 
-export default function OrganizationDashboardPage() {
+function OrganizationDashboardContent() {
   const params = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const orgId = params.orgId as string;
   const { user, loading: authLoading } = useAuth();
 
@@ -37,7 +38,9 @@ export default function OrganizationDashboardPage() {
   const [joinRequests, setJoinRequests] = useState<JoinRequest[]>([]);
   const [activeTasks, setActiveTasks] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<"overview" | "members">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "members">(
+    searchParams?.get("tab") === "members" ? "members" : "overview"
+  );
 
   useBreadcrumbs([
     { label: "Organizations", href: "/dashboard/organizations" },
@@ -61,7 +64,9 @@ export default function OrganizationDashboardPage() {
         // Load join requests for admins/managers (silently skip if not admin)
         const currentUserMember = (membersData || []).find((m: any) => m.user_id === user?.id);
         if (currentUserMember?.role === "admin" || currentUserMember?.role === "manager") {
-          getOrgJoinRequests(orgId).then(setJoinRequests).catch(() => {});
+          getOrgJoinRequests(orgId)
+            .then(setJoinRequests)
+            .catch((err) => console.error("Failed to load join requests:", err));
         }
 
         const projectIds = (projectsData || []).map((p: any) => p.id);
@@ -82,6 +87,22 @@ export default function OrganizationDashboardPage() {
 
     loadOrganizationData();
   }, [orgId, authLoading]);
+
+  // Realtime: refresh join requests when a new one arrives
+  useEffect(() => {
+    if (!orgId) return;
+    const channel = supabase
+      .channel(`join_requests_${orgId}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "organization_join_requests", filter: `org_id=eq.${orgId}` },
+        () => {
+          getOrgJoinRequests(orgId).then(setJoinRequests).catch(() => {});
+        }
+      )
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [orgId]);
 
   const copyInviteCode = () => {
     if (organization?.invite_code) {
@@ -193,10 +214,6 @@ export default function OrganizationDashboardPage() {
                 : "Your workspace is ready for AI optimization. Train your models to unlock smart task decomposition and assignment."}
             </p>
           </div>
-          <button className="mt-4 bg-white/10 hover:bg-white/20 text-white px-4 py-2 rounded-lg text-sm font-bold transition-colors flex items-center gap-2">
-            Explore AI Tools
-            <ArrowRight className="h-4 w-4" />
-          </button>
         </div>
       </section>
 
@@ -242,6 +259,27 @@ export default function OrganizationDashboardPage() {
       {/* Overview Tab */}
       {activeTab === "overview" && (
         <>
+          {/* Pending requests banner for admins */}
+          {isOrgAdmin && joinRequests.length > 0 && (
+            <button
+              onClick={() => setActiveTab("members")}
+              className="w-full flex items-center gap-3 px-5 py-3.5 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-xl text-left hover:bg-amber-100 dark:hover:bg-amber-900/40 transition-colors"
+            >
+              <span className="h-7 w-7 rounded-full bg-amber-500 text-white text-xs font-bold flex items-center justify-center shrink-0">
+                {joinRequests.length}
+              </span>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold text-amber-800 dark:text-amber-300">
+                  {joinRequests.length === 1
+                    ? "1 membership request waiting for your review"
+                    : `${joinRequests.length} membership requests waiting for your review`}
+                </p>
+                <p className="text-xs text-amber-600 dark:text-amber-400">Click to review in Members tab</p>
+              </div>
+              <ArrowRight className="h-4 w-4 text-amber-600 shrink-0" />
+            </button>
+          )}
+
           {/* Stats Grid */}
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
             {stats.map((stat) => (
@@ -404,5 +442,13 @@ export default function OrganizationDashboardPage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function OrganizationDashboardPage() {
+  return (
+    <Suspense fallback={null}>
+      <OrganizationDashboardContent />
+    </Suspense>
   );
 }

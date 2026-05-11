@@ -72,6 +72,13 @@ export default function NewProjectPage() {
   const orgId = params.orgId as string;
   const { user } = useAuth();
 
+  const today = new Date().toISOString().split("T")[0];
+  const maxStartDate = (() => {
+    const d = new Date();
+    d.setDate(d.getDate() + 14);
+    return d.toISOString().split("T")[0];
+  })();
+
   const [currentStep, setCurrentStep] = useState(1);
   const [isCreating, setIsCreating] = useState(false);
   const [isLoadingMembers, setIsLoadingMembers] = useState(true);
@@ -361,12 +368,13 @@ export default function NewProjectPage() {
                   <Input
                     id="start_date"
                     type="date"
+                    min={today}
+                    max={maxStartDate}
                     {...register("start_date", {
                       onChange: (e) => {
                         const startVal = e.target.value;
                         const endVal = watch("end_date");
                         if (startVal && endVal && endVal < startVal) {
-                          // Clear end date if it's now before start date
                           (document.getElementById("end_date") as HTMLInputElement).value = "";
                           trigger("end_date");
                         }
@@ -393,7 +401,7 @@ export default function NewProjectPage() {
                         return true;
                       },
                     })}
-                    min={watch("start_date") || undefined}
+                    min={watch("start_date") || today}
                     disabled={isCreating}
                   />
                   {errors.end_date && (

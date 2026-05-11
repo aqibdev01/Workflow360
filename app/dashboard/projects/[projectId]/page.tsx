@@ -1642,6 +1642,7 @@ const roleIcons: { [key: string]: any } = {
             currentUserId={currentUserId}
             task={editingTask}
             isProjectManager={isProjectManager}
+            projectStartDate={project?.start_date}
             projectEndDate={project?.end_date}
             availableSprints={sprints.filter((s: any) => s.status !== "cancelled")}
             defaultSprintId={taskDialogDefaultSprintId}
@@ -1855,6 +1856,7 @@ const roleIcons: { [key: string]: any } = {
                 currentUserId={currentUserId}
                 task={editingTask}
                 isProjectManager={isProjectManager}
+                projectStartDate={project?.start_date}
                 projectEndDate={project?.end_date}
                 availableSprints={sprints.filter((s: any) => s.status !== "cancelled")}
                 defaultSprintId={taskDialogDefaultSprintId}

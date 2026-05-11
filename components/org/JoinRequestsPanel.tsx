@@ -40,7 +40,9 @@ export function JoinRequestsPanel({ orgId, orgName, requests, onRequestsChanged 
 
       const displayName = request.full_name || request.email;
       toast.success(
-        action === "approved" ? `${displayName} has been added` : `Request from ${displayName} declined`
+        action === "approved"
+          ? `${displayName} has been added to ${orgName}`
+          : `${displayName}'s request to join ${orgName} has been denied`
       );
 
       // Notify the requester

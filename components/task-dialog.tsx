@@ -109,6 +109,7 @@ interface TaskDialogProps {
     created_by: string;
   } | null;
   isProjectManager: boolean;
+  projectStartDate?: string | null;
   projectEndDate?: string | null;
   availableSprints?: Sprint[];
   defaultSprintId?: string;
@@ -128,6 +129,7 @@ export function TaskDialog({
   currentUserId,
   task,
   isProjectManager,
+  projectStartDate,
   projectEndDate,
   availableSprints = [],
   defaultSprintId,
@@ -468,9 +470,17 @@ export function TaskDialog({
                               sprintEnd.setHours(23, 59, 59, 999);
                               return date < sprintStart || date > sprintEnd;
                             }
+                            // Minimum: the later of today and the project start date
                             const today = new Date();
                             today.setHours(0, 0, 0, 0);
-                            if (date < today) return true;
+                            if (projectStartDate) {
+                              const pStart = new Date(projectStartDate);
+                              pStart.setHours(0, 0, 0, 0);
+                              if (date < pStart) return true;
+                            } else {
+                              if (date < today) return true;
+                            }
+                            // Maximum: project end date
                             if (projectEndDate) {
                               const endDate = new Date(projectEndDate);
                               endDate.setHours(23, 59, 59, 999);
