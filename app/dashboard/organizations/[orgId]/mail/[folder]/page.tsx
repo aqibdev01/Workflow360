@@ -24,12 +24,15 @@ import {
   getSentMails,
   getDrafts,
   getStarredMails,
+  getTrashedSentMails,
   markAsRead,
   markAllAsRead,
   starMail,
   unstarMail,
   archiveMail,
+  unarchiveMail,
   trashMail,
+  trashSentMail,
   deletePermanently,
   deleteSentMail,
   type MailRecipient,
@@ -86,6 +89,7 @@ interface MailRow {
   isRead: boolean;
   isStarred: boolean;
   isDraft: boolean;
+  isSentMail?: boolean; // true for sent mails shown in trash
 }
 
 function recipientRowToMailRow(r: MailRecipient): MailRow {
@@ -187,8 +191,15 @@ export default function MailFolderPage() {
           break;
         }
         case "trash": {
-          const res = await getInboxMails(orgId, { folder: "trash" });
-          mailRows = res.mails.map(recipientRowToMailRow);
+          const [recipientRes, sentTrashed] = await Promise.all([
+            getInboxMails(orgId, { folder: "trash" }),
+            getTrashedSentMails(orgId),
+          ]);
+          const recipientRows = recipientRes.mails.map(recipientRowToMailRow);
+          const sentRows = sentTrashed.map((m) => ({ ...sentMailToMailRow(m), isSentMail: true }));
+          mailRows = [...recipientRows, ...sentRows].sort(
+            (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+          );
           break;
         }
         case "announcements": {
@@ -274,39 +285,70 @@ export default function MailFolderPage() {
   };
 
   const handleBulkArchive = async () => {
-    for (const id of selected) {
-      await archiveMail(id).catch(() => {});
+    try {
+      for (const id of selected) await archiveMail(id);
+      setRows((prev) => prev.filter((r) => !selected.has(r.id)));
+      setSelected(new Set());
+      toast.success("Archived");
+    } catch {
+      toast.error("Failed to archive some mails");
+      loadMails();
     }
-    setRows((prev) => prev.filter((r) => !selected.has(r.id)));
-    setSelected(new Set());
-    toast.success("Archived");
   };
 
   const handleBulkTrash = async () => {
-    for (const id of selected) {
-      await trashMail(id).catch(() => {});
+    try {
+      for (const id of selected) await trashMail(id);
+      setRows((prev) => prev.filter((r) => !selected.has(r.id)));
+      setSelected(new Set());
+      toast.success("Moved to trash");
+    } catch {
+      toast.error("Failed to move to trash");
+      loadMails();
     }
-    setRows((prev) => prev.filter((r) => !selected.has(r.id)));
-    setSelected(new Set());
-    toast.success("Moved to trash");
   };
 
-  const handleBulkDelete = async () => {
-    for (const id of selected) {
-      await deletePermanently(id).catch(() => {});
+  const handleBulkTrashSent = async () => {
+    try {
+      for (const id of selected) await trashSentMail(id);
+      setRows((prev) => prev.filter((r) => !selected.has(r.id)));
+      setSelected(new Set());
+      toast.success("Moved to trash");
+    } catch {
+      toast.error("Failed to move to trash");
+      loadMails();
     }
-    setRows((prev) => prev.filter((r) => !selected.has(r.id)));
-    setSelected(new Set());
-    toast.success("Deleted permanently");
   };
 
-  const handleBulkDeleteSent = async () => {
-    for (const id of selected) {
-      await deleteSentMail(id).catch(() => {});
+  const handleBulkUnarchive = async () => {
+    try {
+      for (const id of selected) await unarchiveMail(id);
+      setRows((prev) => prev.filter((r) => !selected.has(r.id)));
+      setSelected(new Set());
+      toast.success("Moved back to inbox");
+    } catch {
+      toast.error("Failed to unarchive some mails");
+      loadMails();
     }
-    setRows((prev) => prev.filter((r) => !selected.has(r.id)));
-    setSelected(new Set());
-    toast.success("Sent mails deleted");
+  };
+
+  const handleBulkDeleteTrash = async () => {
+    try {
+      const selectedRows = rows.filter((r) => selected.has(r.id));
+      for (const row of selectedRows) {
+        if (row.isSentMail) {
+          await deleteSentMail(row.id);
+        } else {
+          await deletePermanently(row.id);
+        }
+      }
+      setRows((prev) => prev.filter((r) => !selected.has(r.id)));
+      setSelected(new Set());
+      toast.success("Deleted permanently");
+    } catch {
+      toast.error("Failed to delete some mails");
+      loadMails();
+    }
   };
 
   const handleMarkAllRead = async () => {
@@ -344,18 +386,21 @@ export default function MailFolderPage() {
           {folder !== "archived" && folder !== "trash" && folder !== "sent" && folder !== "drafts" && (
             <Button variant="ghost" size="sm" onClick={handleBulkArchive}>Archive</Button>
           )}
+          {folder === "archived" && (
+            <Button variant="ghost" size="sm" onClick={handleBulkUnarchive}>Move to Inbox</Button>
+          )}
           {folder !== "trash" && folder !== "sent" && folder !== "drafts" && (
             <Button variant="ghost" size="sm" onClick={handleBulkTrash}>Trash</Button>
           )}
           {folder === "trash" && (
-            <Button variant="ghost" size="sm" className="text-destructive" onClick={handleBulkDelete}>
+            <Button variant="ghost" size="sm" className="text-destructive" onClick={handleBulkDeleteTrash}>
               Delete Forever
             </Button>
           )}
           {folder === "sent" && (
-            <Button variant="ghost" size="sm" className="text-destructive" onClick={handleBulkDeleteSent}>
+            <Button variant="ghost" size="sm" onClick={handleBulkTrashSent}>
               <Trash2 className="h-3.5 w-3.5 mr-1" />
-              Delete
+              Trash
             </Button>
           )}
           <button onClick={() => setSelected(new Set())} className="ml-auto text-xs text-muted-foreground hover:text-foreground">

@@ -15,7 +15,7 @@ import {
   Plus,
   UserPlus,
   ArrowRight,
-  Sparkles,
+  Rocket,
   ListChecks,
   Zap,
   Target,
@@ -75,7 +75,7 @@ export default function DashboardPage() {
           {/* Empty State - Create/Join Organization Cards */}
           <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-2">
             {/* Create Organization Card */}
-            <Card className="relative overflow-hidden border-2 border-indigo-500/20 hover:border-indigo-500/40 transition-all hover:shadow-xl hover:shadow-indigo-500/10 group bg-white dark:bg-slate-900">
+            <Card className="relative overflow-hidden border-2 border-indigo-500/20 hover:border-indigo-500/40 transition-all hover:shadow-xl hover:shadow-indigo-500/10 group bg-white dark:bg-slate-900 flex flex-col">
               <div className="absolute top-0 right-0 w-40 h-40 bg-gradient-to-br from-indigo-500/10 to-cyan-400/10 rounded-full -mr-20 -mt-20 group-hover:scale-110 transition-transform" />
               <CardHeader>
                 <div className="h-14 w-14 bg-gradient-to-br from-indigo-500 to-cyan-400 rounded-xl flex items-center justify-center mb-4 group-hover:scale-105 transition-transform shadow-lg shadow-indigo-500/25">
@@ -86,8 +86,8 @@ export default function DashboardPage() {
                   Start your own team workspace and invite members to collaborate on projects.
                 </CardDescription>
               </CardHeader>
-              <CardContent className="space-y-4">
-                <ul className="space-y-2 text-sm text-muted-foreground">
+              <CardContent className="flex flex-col flex-1 space-y-4">
+                <ul className="flex-1 space-y-2 text-sm text-muted-foreground">
                   <li className="flex items-center gap-2">
                     <CheckCircle2 className="h-4 w-4 text-success" />
                     Create unlimited projects
@@ -109,10 +109,10 @@ export default function DashboardPage() {
             </Card>
 
             {/* Join Organization Card */}
-            <Card className="relative overflow-hidden border-2 border-violet-500/20 hover:border-violet-500/40 transition-all hover:shadow-xl hover:shadow-violet-500/10 group bg-white dark:bg-slate-900">
-              <div className="absolute top-0 right-0 w-40 h-40 bg-gradient-to-br from-violet-500-light/10 to-violet-500-dark/10 rounded-full -mr-20 -mt-20 group-hover:scale-110 transition-transform" />
+            <Card className="relative overflow-hidden border-2 border-violet-500/20 hover:border-violet-500/40 transition-all hover:shadow-xl hover:shadow-violet-500/10 group bg-white dark:bg-slate-900 flex flex-col">
+              <div className="absolute top-0 right-0 w-40 h-40 bg-gradient-to-br from-violet-500/10 to-violet-700/10 rounded-full -mr-20 -mt-20 group-hover:scale-110 transition-transform" />
               <CardHeader>
-                <div className="h-14 w-14 bg-gradient-to-br from-violet-500-light to-violet-500-dark rounded-xl flex items-center justify-center mb-4 group-hover:scale-105 transition-transform shadow-lg shadow-violet-500/25">
+                <div className="h-14 w-14 bg-gradient-to-br from-violet-500 to-violet-700 rounded-xl flex items-center justify-center mb-4 group-hover:scale-105 transition-transform shadow-lg shadow-violet-500/25">
                   <UserPlus className="h-7 w-7 text-white" />
                 </div>
                 <CardTitle className="text-2xl text-foreground">Join Organization</CardTitle>
@@ -120,8 +120,8 @@ export default function DashboardPage() {
                   Join an existing organization using an invitation code or link.
                 </CardDescription>
               </CardHeader>
-              <CardContent className="space-y-4">
-                <ul className="space-y-2 text-sm text-muted-foreground">
+              <CardContent className="flex flex-col flex-1 space-y-4">
+                <ul className="flex-1 space-y-2 text-sm text-muted-foreground">
                   <li className="flex items-center gap-2">
                     <CheckCircle2 className="h-4 w-4 text-success" />
                     Collaborate with your team
@@ -147,7 +147,7 @@ export default function DashboardPage() {
           <Card className="bg-gradient-to-br from-indigo-500/5 via-white to-violet-500/5 dark:from-indigo-500/10 dark:via-slate-900 dark:to-violet-500/10 border-indigo-500/20">
             <CardHeader>
               <div className="flex items-center gap-2">
-                <Sparkles className="h-5 w-5 text-indigo-600" />
+                <Rocket className="h-5 w-5 text-indigo-600" />
                 <CardTitle className="text-foreground">Getting Started with Workflow360</CardTitle>
               </div>
               <CardDescription>
@@ -166,7 +166,7 @@ export default function DashboardPage() {
                   </p>
                 </div>
                 <div className="space-y-2">
-                  <div className="h-10 w-10 bg-gradient-to-br from-violet-500-light to-violet-500-dark rounded-lg flex items-center justify-center shadow-md shadow-violet-500/20">
+                  <div className="h-10 w-10 bg-gradient-to-br from-violet-500 to-violet-700 rounded-lg flex items-center justify-center shadow-md shadow-violet-500/20">
                     <span className="text-lg font-bold text-white">2</span>
                   </div>
                   <h3 className="font-semibold text-foreground">Add Projects</h3>
@@ -184,8 +184,8 @@ export default function DashboardPage() {
                   </p>
                 </div>
                 <div className="space-y-2">
-                  <div className="h-10 w-10 bg-gradient-to-br from-warning to-amber-400 rounded-lg flex items-center justify-center shadow-md shadow-warning/20">
-                    <span className="text-lg font-bold text-foreground">4</span>
+                  <div className="h-10 w-10 bg-gradient-to-br from-amber-500 to-amber-400 rounded-lg flex items-center justify-center shadow-md shadow-amber-500/20">
+                    <span className="text-lg font-bold text-white">4</span>
                   </div>
                   <h3 className="font-semibold text-foreground">Track Progress</h3>
                   <p className="text-sm text-muted-foreground">
@@ -200,7 +200,7 @@ export default function DashboardPage() {
           <div className="grid gap-4 md:grid-cols-3">
             <Card className="group hover:shadow-lg hover:shadow-cyan-400/10 transition-all border-cyan-400/10 hover:border-cyan-400/30 bg-white dark:bg-slate-900">
               <CardHeader>
-                <div className="h-12 w-12 bg-gradient-to-br from-cyan-400-light to-cyan-400-dark rounded-xl flex items-center justify-center mb-2 group-hover:scale-105 transition-transform shadow-md shadow-cyan-400/20">
+                <div className="h-12 w-12 bg-gradient-to-br from-cyan-400 to-cyan-600 rounded-xl flex items-center justify-center mb-2 group-hover:scale-105 transition-transform shadow-md shadow-cyan-400/20">
                   <Zap className="h-6 w-6 text-white" />
                 </div>
                 <CardTitle className="text-foreground">AI-Powered Insights</CardTitle>
@@ -211,7 +211,7 @@ export default function DashboardPage() {
             </Card>
             <Card className="group hover:shadow-lg hover:shadow-violet-500/10 transition-all border-violet-500/10 hover:border-violet-500/30 bg-white dark:bg-slate-900">
               <CardHeader>
-                <div className="h-12 w-12 bg-gradient-to-br from-violet-500-light to-violet-500-dark rounded-xl flex items-center justify-center mb-2 group-hover:scale-105 transition-transform shadow-md shadow-violet-500/20">
+                <div className="h-12 w-12 bg-gradient-to-br from-violet-500 to-violet-700 rounded-xl flex items-center justify-center mb-2 group-hover:scale-105 transition-transform shadow-md shadow-violet-500/20">
                   <Target className="h-6 w-6 text-white" />
                 </div>
                 <CardTitle className="text-foreground">Sprint Planning</CardTitle>
@@ -222,7 +222,7 @@ export default function DashboardPage() {
             </Card>
             <Card className="group hover:shadow-lg hover:shadow-indigo-500/10 transition-all border-indigo-500/10 hover:border-indigo-500/30 bg-white dark:bg-slate-900">
               <CardHeader>
-                <div className="h-12 w-12 bg-gradient-to-br from-indigo-500 to-indigo-500-600 rounded-xl flex items-center justify-center mb-2 group-hover:scale-105 transition-transform shadow-md shadow-indigo-500/20">
+                <div className="h-12 w-12 bg-gradient-to-br from-indigo-500 to-indigo-700 rounded-xl flex items-center justify-center mb-2 group-hover:scale-105 transition-transform shadow-md shadow-indigo-500/20">
                   <ListChecks className="h-6 w-6 text-white" />
                 </div>
                 <CardTitle className="text-foreground">Task Management</CardTitle>

@@ -3,12 +3,12 @@
 import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { signUp } from "@/lib/auth";
-import { isSupabaseConfigured, supabase } from "@/lib/supabase";
-import { Input } from "@/components/ui/input";
-import { Card } from "@/components/ui/card";
+import Image from "next/image";
 import { Logo } from "@/components/Logo";
-import { Loader2, AlertCircle, User, Mail, Lock, Check, X, ShieldQuestion, ArrowRight, Eye, EyeOff } from "lucide-react";
+import { signUp } from "@/lib/auth";
+import { isSupabaseConfigured } from "@/lib/supabase";
+import { Loader2, AlertCircle, Check, X, ArrowRight, Eye, EyeOff } from "lucide-react";
+import { ThemeToggle } from "@/components/ui/theme-toggle";
 
 const EMAIL_REGEX = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
 
@@ -75,7 +75,6 @@ export default function SignupPage() {
   const [securityQuestion, setSecurityQuestion] = useState("");
   const [securityAnswer, setSecurityAnswer] = useState("");
   const [error, setError] = useState("");
-  const [success, setSuccess] = useState(false);
   const [loading, setLoading] = useState(false);
   const [showPasswordRequirements, setShowPasswordRequirements] = useState(false);
 
@@ -112,83 +111,31 @@ export default function SignupPage() {
     setLoading(true);
 
     try {
-      const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-        if (event === "SIGNED_IN" && session) {
-          subscription.unsubscribe();
-          (supabase as any)
-            .from("users")
-            .update({
-              security_question: securityQuestion,
-              security_answer: securityAnswer.trim().toLowerCase(),
-            })
-            .eq("id", session.user.id)
-            .then(() => {})
-            .catch((err: any) => console.error("Failed to save security question:", err));
+      const res = await signUp({ email, password, fullName });
 
-          setSuccess(true);
-          setTimeout(() => { window.location.href = "/dashboard"; }, 1500);
-        }
-      });
-
-      const timeout = setTimeout(() => {
-        subscription.unsubscribe();
+      if (res.error) {
+        setError(res.error.message);
         setLoading(false);
-        setError("Account may have been created. Please try logging in.");
-      }, 60000);
+        return;
+      }
 
-      signUp({ email, password, fullName }).then((res) => {
-        clearTimeout(timeout);
-        if (res.data && !success) {
-          subscription.unsubscribe();
-          (supabase as any)
-            .from("users")
-            .update({
-              security_question: securityQuestion,
-              security_answer: securityAnswer.trim().toLowerCase(),
-            })
-            .eq("id", res.data.id)
-            .then(() => {})
-            .catch((err: any) => console.error("Failed to save security question:", err));
+      // Store security Q&A in sessionStorage — saved to DB after email is verified
+      if (typeof window !== "undefined") {
+        sessionStorage.setItem(`secq_${email}`, securityQuestion);
+        sessionStorage.setItem(`seca_${email}`, securityAnswer.trim().toLowerCase());
+      }
 
-          setSuccess(true);
-          setTimeout(() => { window.location.href = "/dashboard"; }, 1500);
-        } else if (res.error) {
-          subscription.unsubscribe();
-          clearTimeout(timeout);
-          setError(res.error.message);
-          setLoading(false);
-        }
-      }).catch(() => {});
+      // Redirect to OTP verification page
+      router.push(`/auth/verify-email?email=${encodeURIComponent(email)}`);
     } catch (err: any) {
       setError(err?.message || "An unexpected error occurred");
       setLoading(false);
     }
   };
 
-  // Success state
-  if (success) {
-    return (
-      <main className="flex min-h-screen items-center justify-center bg-white dark:bg-slate-900 p-8">
-        <div className="text-center space-y-6 max-w-md">
-          <div className="mx-auto w-20 h-20 bg-emerald-50 dark:bg-emerald-950/30 rounded-full flex items-center justify-center">
-            <Check className="h-10 w-10 text-emerald-500" />
-          </div>
-          <h2 className="text-3xl font-bold tracking-tight text-foreground">
-            Account Created!
-          </h2>
-          <p className="text-slate-500 dark:text-slate-400">
-            Welcome to Workflow360. Redirecting you now...
-          </p>
-          <div className="flex justify-center">
-            <Loader2 className="h-5 w-5 animate-spin text-indigo-500" />
-          </div>
-        </div>
-      </main>
-    );
-  }
-
   return (
-    <main className="flex min-h-screen">
+    <main className="flex h-screen overflow-hidden">
+      <ThemeToggle className="fixed top-4 right-4 z-50" />
       {/* LEFT PANEL: Brand & Features */}
       <section className="hidden lg:flex lg:w-1/2 relative flex-col justify-between p-12 overflow-hidden bg-gradient-to-br from-violet-600 to-indigo-600">
         <div className="absolute top-[-10%] left-[-10%] w-96 h-96 bg-white/10 rounded-full blur-3xl" />
@@ -196,11 +143,11 @@ export default function SignupPage() {
         <div className="absolute bottom-[30%] left-[10%] w-32 h-32 bg-white/5 backdrop-blur-xl -rotate-12 rounded-2xl border border-white/10" />
 
         <div className="relative z-10 flex items-center gap-3">
-          <div className="w-10 h-10 bg-white rounded-lg flex items-center justify-center shadow-lg">
-            <Logo className="h-6 w-6" />
+          <div className="bg-white p-2 rounded-xl shadow-sm">
+            <Logo className="h-8 w-8" />
           </div>
-          <span className="text-2xl font-bold tracking-tight text-white">
-            Workflow360
+          <span className="text-white font-bold text-xl tracking-tight">
+            Workflow<span className="font-extrabold">360</span>
           </span>
         </div>
 
@@ -226,16 +173,20 @@ export default function SignupPage() {
       </section>
 
       {/* RIGHT PANEL: Signup Form */}
-      <section className="w-full lg:w-1/2 flex items-center justify-center p-6 md:p-12 lg:p-16 bg-white dark:bg-slate-900 overflow-y-auto">
+      <section className="w-full lg:w-1/2 overflow-y-auto bg-white dark:bg-slate-900">
+        <div className="min-h-full flex items-center justify-center p-6 md:p-12 lg:p-16">
         <div className="w-full max-w-md space-y-8">
           {/* Mobile brand */}
-          <div className="lg:hidden flex items-center gap-3 mb-4">
-            <div className="w-8 h-8 bg-violet-600 rounded-lg flex items-center justify-center">
-              <Logo className="h-5 w-5" />
-            </div>
-            <span className="text-xl font-bold tracking-tight text-foreground">
-              Workflow360
-            </span>
+          <div className="lg:hidden mb-4">
+            <Image
+              src="/workflowlogo.jpeg"
+              alt="Workflow360"
+              width={0}
+              height={0}
+              sizes="180px"
+              style={{ height: "44px", width: "auto" }}
+              priority
+            />
           </div>
 
           <div className="text-left space-y-2">
@@ -280,7 +231,7 @@ export default function SignupPage() {
             {/* Email */}
             <div className="space-y-2">
               <label className="text-[0.6875rem] font-bold uppercase tracking-wider text-slate-400">
-                Email Address
+                Email Address <span className="text-rose-500">*</span>
               </label>
               <div className="relative">
                 <input
@@ -308,7 +259,7 @@ export default function SignupPage() {
             {/* Password */}
             <div className="space-y-2">
               <label className="text-[0.6875rem] font-bold uppercase tracking-wider text-slate-400">
-                Password
+                Password <span className="text-rose-500">*</span>
               </label>
               <div className="relative">
                 <input
@@ -367,7 +318,7 @@ export default function SignupPage() {
             {/* Confirm Password */}
             <div className="space-y-2">
               <label className="text-[0.6875rem] font-bold uppercase tracking-wider text-slate-400">
-                Confirm Password
+                Confirm Password <span className="text-rose-500">*</span>
               </label>
               <div className="relative">
                 <input
@@ -476,6 +427,7 @@ export default function SignupPage() {
               </button>
             </Link>
           </form>
+        </div>
         </div>
       </section>
     </main>

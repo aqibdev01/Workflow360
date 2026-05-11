@@ -14,6 +14,10 @@ const inter = Inter({
 export const metadata: Metadata = {
   title: "Workflow360",
   description: "AI-powered workflow management — precision in every craft",
+  icons: {
+    icon: "/work.png",
+    apple: "/work.png",
+  },
 };
 
 export default function RootLayout({
