@@ -341,24 +341,30 @@ function ProjectDashboardContent() {
   const [tasks, setTasks] = useState<any[]>([]);
   const [sprints, setSprints] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, _setActiveTabState] = useState(searchParams.get("tab") || "overview");
+
+  // Tab state — local state for instant switching + sync from URL on external navigation.
+  // We use replaceState (not router.replace) so Next.js doesn't re-render the whole page
+  // when tabs change internally (avoids error-boundary issues on certain tab mounts).
+  const tabFromUrl = searchParams.get("tab") || "overview";
+  const [activeTab, setActiveTabState] = useState(tabFromUrl);
+  const [prevTabFromUrl, setPrevTabFromUrl] = useState(tabFromUrl);
+
+  // Detect external URL change (e.g. notification link via router.push) and sync tab
+  // DURING this render so there's no single-frame flash of the wrong tab.
+  if (prevTabFromUrl !== tabFromUrl) {
+    setPrevTabFromUrl(tabFromUrl);
+    setActiveTabState(tabFromUrl);
+  }
 
   const setActiveTab = (tab: string) => {
-    _setActiveTabState(tab);
+    setActiveTabState(tab);
     const url = tab === "overview"
       ? `/dashboard/projects/${projectId}`
       : `/dashboard/projects/${projectId}?tab=${tab}`;
-    // Use history API directly to avoid triggering a Next.js navigation,
-    // which can cause the error boundary to fire during settings tab mount.
     if (typeof window !== "undefined") {
       window.history.replaceState(null, "", url);
     }
   };
-
-  useEffect(() => {
-    const tabFromUrl = searchParams.get("tab") || "overview";
-    _setActiveTabState(tabFromUrl);
-  }, [searchParams]);
 
   // Task dialog state
   const [taskDialogOpen, setTaskDialogOpen] = useState(false);
@@ -395,8 +401,27 @@ function ProjectDashboardContent() {
   const [currentUserId, setCurrentUserId] = useState<string>("");
   const [userRole, setUserRole] = useState<{ id: string; role: string; custom_role: string | null } | null>(null);
 
-  // Calendar → Kanban highlight
-  const [highlightTaskId, setHighlightTaskId] = useState<string | null>(null);
+  // Calendar → Kanban highlight (also populated from URL ?highlight= param)
+  const [highlightTaskId, setHighlightTaskId] = useState<string | null>(
+    searchParams.get("highlight")
+  );
+
+  // When navigating here from a notification link (?tab=kanban&highlight=<id>),
+  // scroll to and highlight the task once tasks have loaded.
+  useEffect(() => {
+    const taskIdFromUrl = searchParams.get("highlight");
+    if (!taskIdFromUrl) return;
+    setHighlightTaskId(taskIdFromUrl);
+    const scrollTimer = setTimeout(() => {
+      const el = document.getElementById(`task-card-${taskIdFromUrl}`);
+      if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 800);
+    const clearTimer = setTimeout(() => setHighlightTaskId(null), 3000);
+    return () => {
+      clearTimeout(scrollTimer);
+      clearTimeout(clearTimer);
+    };
+  }, [searchParams]);
 
   // File attachment counts per task
   const [taskFileCounts, setTaskFileCounts] = useState<Record<string, number>>({});
@@ -2339,9 +2364,24 @@ const roleIcons: { [key: string]: any } = {
   );
 }
 
+function ProjectPageSkeleton() {
+  return (
+    <div className="space-y-6 animate-pulse">
+      <div className="h-8 bg-muted rounded-lg w-1/3" />
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        {[...Array(4)].map((_, i) => (
+          <div key={i} className="h-28 bg-muted rounded-xl" />
+        ))}
+      </div>
+      <div className="h-48 bg-muted rounded-xl" />
+      <div className="h-64 bg-muted rounded-xl" />
+    </div>
+  );
+}
+
 export default function ProjectDashboardPage() {
   return (
-    <Suspense fallback={<div className="flex items-center justify-center min-h-screen" />}>
+    <Suspense fallback={<ProjectPageSkeleton />}>
       <ProjectDashboardContent />
     </Suspense>
   );

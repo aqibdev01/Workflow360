@@ -91,7 +91,7 @@ export async function GET(request: Request) {
         type: "sprint_deadline",
         title: `Sprint ending soon: ${sprint.name}`,
         body: `"${sprint.name}" in ${project.name} ends on ${new Date(sprint.end_date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`,
-        link: `/dashboard/projects/${sprint.project_id}?tab=board`,
+        link: `/dashboard/projects/${sprint.project_id}?tab=kanban`,
         metadata: {
           sprintId: sprint.id,
           sprintName: sprint.name,

@@ -198,9 +198,12 @@ export default function DashboardLayout({
   const [darkMode, setDarkMode] = useState(false);
   const [sessionProject, setSessionProject] = useState<{ projectId: string; orgId: string } | null>(null);
 
-  // Extract orgId from path for notification bell
+  // Extract orgId from path for notification bell.
+  // Falls back to sessionStorage when on /dashboard/projects/* routes.
+  // When null (e.g. /dashboard main page), the bell fetches across all orgs.
   const orgMatch = pathname.match(/\/dashboard\/organizations\/([^/]+)/);
   const currentOrgId = orgMatch && UUID_RE.test(orgMatch[1]) ? orgMatch[1] : null;
+  const notificationOrgId = currentOrgId || sessionProject?.orgId || null;
 
   // Read project context from sessionStorage on each navigation
   useEffect(() => {
@@ -429,7 +432,7 @@ export default function DashboardLayout({
               </button>
 
               {/* Notification bell */}
-              <NotificationBell orgId={currentOrgId} />
+              <NotificationBell orgId={notificationOrgId} />
 
               {/* User avatar (compact, no dropdown — settings in sidebar) */}
               <DropdownMenu>

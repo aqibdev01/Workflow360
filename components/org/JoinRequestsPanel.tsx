@@ -6,8 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Avatar } from "@/components/ui/avatar";
 import { toast } from "sonner";
-import { reviewJoinRequest } from "@/lib/database";
-import { notifyJoinRequestReviewed } from "@/lib/notifications/triggers";
+import { reviewJoinRequest, getOrganizationMembers } from "@/lib/database";
+import { notifyJoinRequestReviewed, notifyMemberJoined } from "@/lib/notifications/triggers";
 
 export type JoinRequest = {
   id: string;
@@ -45,8 +45,19 @@ export function JoinRequestsPanel({ orgId, orgName, requests, onRequestsChanged 
           : `${displayName}'s request to join ${orgName} has been denied`
       );
 
-      // Notify the requester
+      // Notify the requester of the outcome
       notifyJoinRequestReviewed(orgId, request.user_id, orgName, action === "approved").catch(() => {});
+
+      // On approval, notify all existing org members that someone new joined
+      if (action === "approved") {
+        getOrganizationMembers(orgId)
+          .then((members) => {
+            const memberIds = (members || []).map((m: any) => m.users?.id || m.user_id).filter(Boolean);
+            const newMemberName = request.full_name || request.email;
+            notifyMemberJoined(orgId, { id: request.user_id, name: newMemberName }, memberIds).catch(() => {});
+          })
+          .catch(() => {});
+      }
 
       onRequestsChanged();
     } catch (err: any) {

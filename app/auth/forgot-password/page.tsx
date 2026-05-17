@@ -92,9 +92,11 @@ export default function ForgotPasswordPage() {
 
     setLoading(true);
     try {
+      // Supabase sends a 6-digit OTP token when the "Reset Password" email
+      // template uses {{ .Token }} instead of {{ .ConfirmationURL }}.
+      // Verified with verifyOtp({ type: "recovery" }) below.
       const { error: resetError } = await supabase.auth.resetPasswordForEmail(
-        email.trim(),
-        { redirectTo: undefined as any }
+        email.trim()
       );
 
       if (resetError) {
@@ -122,9 +124,7 @@ export default function ForgotPasswordPage() {
     setResending(true);
     setError("");
     try {
-      await supabase.auth.resetPasswordForEmail(email.trim(), {
-        redirectTo: undefined as any,
-      });
+      await supabase.auth.resetPasswordForEmail(email.trim());
       setResendCooldown(60);
       setOtp(["", "", "", "", "", ""]);
       setTimeout(() => inputRefs.current[0]?.focus(), 50);

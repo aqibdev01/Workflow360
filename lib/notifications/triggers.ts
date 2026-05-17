@@ -137,7 +137,7 @@ export async function notifyMailReceived(
     type: "mail_received",
     title: `New mail from ${senderName}`,
     body: subject,
-    link: `/dashboard/organizations/${orgId}/mail/${mailId}`,
+    link: `/dashboard/organizations/${orgId}/mail/inbox/${mailId}`,
     metadata: { mailId, senderName },
   });
 }
