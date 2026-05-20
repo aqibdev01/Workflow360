@@ -1,13 +1,12 @@
 "use client";
 
-import { useEffect, useState, Suspense } from "react";
-import { useParams, useRouter, useSearchParams } from "next/navigation";
+import { useEffect, useState, useRef, Suspense } from "react";
+import { useParams, useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
 import Link from "next/link";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsContent } from "@/components/ui/tabs";
 import {
   DndContext,
   DragOverlay,
@@ -332,7 +331,6 @@ function BacklogSection({ tasks, taskFileCounts, isProjectManager, onEditTask, o
 function ProjectDashboardContent() {
   const params = useParams();
   const router = useRouter();
-  const searchParams = useSearchParams();
   const projectId = params.projectId as string;
   const { user, userProfile, loading: authLoading } = useAuth();
 
@@ -342,28 +340,15 @@ function ProjectDashboardContent() {
   const [sprints, setSprints] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Tab state — local state for instant switching + sync from URL on external navigation.
-  // We use replaceState (not router.replace) so Next.js doesn't re-render the whole page
-  // when tabs change internally (avoids error-boundary issues on certain tab mounts).
-  const tabFromUrl = searchParams.get("tab") || "overview";
-  const [activeTab, setActiveTabState] = useState(tabFromUrl);
-  const [prevTabFromUrl, setPrevTabFromUrl] = useState(tabFromUrl);
-
-  // Detect external URL change (e.g. notification link via router.push) and sync tab
-  // DURING this render so there's no single-frame flash of the wrong tab.
-  if (prevTabFromUrl !== tabFromUrl) {
-    setPrevTabFromUrl(tabFromUrl);
-    setActiveTabState(tabFromUrl);
-  }
+  // Tab state — default "overview"; synced from URL in useEffect below (SSR-safe).
+  const [activeTab, setActiveTabState] = useState<string>("overview");
 
   const setActiveTab = (tab: string) => {
     setActiveTabState(tab);
     const url = tab === "overview"
       ? `/dashboard/projects/${projectId}`
       : `/dashboard/projects/${projectId}?tab=${tab}`;
-    if (typeof window !== "undefined") {
-      window.history.replaceState(null, "", url);
-    }
+    window.history.replaceState(null, "", url);
   };
 
   // Task dialog state
@@ -402,26 +387,36 @@ function ProjectDashboardContent() {
   const [userRole, setUserRole] = useState<{ id: string; role: string; custom_role: string | null } | null>(null);
 
   // Calendar → Kanban highlight (also populated from URL ?highlight= param)
-  const [highlightTaskId, setHighlightTaskId] = useState<string | null>(
-    searchParams.get("highlight")
-  );
+  const [highlightTaskId, setHighlightTaskId] = useState<string | null>(null);
+  // Stores the task ID from ?highlight= that needs to be auto-opened once tasks load
+  const pendingOpenTaskId = useRef<string | null>(null);
 
-  // When navigating here from a notification link (?tab=kanban&highlight=<id>),
-  // scroll to and highlight the task once tasks have loaded.
+  // On mount (client-only): sync tab + highlight from URL params.
+  // Must run in useEffect — useState lazy initializers run on the server with
+  // window === undefined, so the server always returns "overview", and React
+  // uses that server value during hydration, ignoring the URL entirely.
   useEffect(() => {
-    const taskIdFromUrl = searchParams.get("highlight");
-    if (!taskIdFromUrl) return;
-    setHighlightTaskId(taskIdFromUrl);
-    const scrollTimer = setTimeout(() => {
-      const el = document.getElementById(`task-card-${taskIdFromUrl}`);
-      if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
-    }, 800);
-    const clearTimer = setTimeout(() => setHighlightTaskId(null), 3000);
-    return () => {
-      clearTimeout(scrollTimer);
-      clearTimeout(clearTimer);
-    };
-  }, [searchParams]);
+    const params = new URLSearchParams(window.location.search);
+    const tabFromUrl = params.get("tab");
+    const highlightFromUrl = params.get("highlight");
+
+    if (tabFromUrl) setActiveTabState(tabFromUrl);
+
+    if (highlightFromUrl) {
+      setHighlightTaskId(highlightFromUrl);
+      pendingOpenTaskId.current = highlightFromUrl;
+      const scrollTimer = setTimeout(() => {
+        const el = document.getElementById(`task-card-${highlightFromUrl}`);
+        if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+      }, 900);
+      const clearTimer = setTimeout(() => setHighlightTaskId(null), 3500);
+      return () => {
+        clearTimeout(scrollTimer);
+        clearTimeout(clearTimer);
+      };
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // File attachment counts per task
   const [taskFileCounts, setTaskFileCounts] = useState<Record<string, number>>({});
@@ -739,6 +734,18 @@ const roleIcons: { [key: string]: any } = {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId, user?.id, authLoading]);
 
+  // Auto-open task dialog when navigating from a notification (?highlight=taskId).
+  // Runs whenever `tasks` changes. Once tasks are loaded and pendingOpenTaskId is set,
+  // find the matching task and open its detail dialog.
+  useEffect(() => {
+    if (!pendingOpenTaskId.current || tasks.length === 0) return;
+    const task = tasks.find((t: any) => t.id === pendingOpenTaskId.current);
+    if (task) {
+      pendingOpenTaskId.current = null;
+      setViewingTask(task);
+    }
+  }, [tasks]);
+
   // Load decomposition history when viewing a task
   useEffect(() => {
     if (!viewingTask) {
@@ -887,9 +894,9 @@ const roleIcons: { [key: string]: any } = {
       </div>
 
       {/* Content Sections - Navigation via Quick Actions */}
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+      <div className="space-y-6">
         {/* Overview Tab */}
-        <TabsContent value="overview" className="space-y-6">
+        {activeTab === "overview" && <div className="space-y-6">
           {/* Quick Stats */}
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
             <Card>
@@ -1164,10 +1171,10 @@ const roleIcons: { [key: string]: any } = {
               </CardContent>
             </Card>
           </div>
-        </TabsContent>
+        </div>}
 
         {/* Kanban Tab */}
-        <TabsContent value="kanban" className="space-y-4">
+        {activeTab === "kanban" && <div className="space-y-4">
           <div className="flex items-center justify-between flex-wrap gap-3">
             <div>
               <h3 className="text-lg font-semibold">Kanban Board</h3>
@@ -1833,10 +1840,10 @@ const roleIcons: { [key: string]: any } = {
               </DialogFooter>
             </DialogContent>
           </Dialog>
-        </TabsContent>
+        </div>}
 
         {/* Sprints Tab */}
-        <TabsContent value="sprints" className="space-y-4">
+        {activeTab === "sprints" && <div className="space-y-4">
           {selectedSprint ? (
             // Sprint Detail View with Timeline
             <div className="space-y-4">
@@ -2095,10 +2102,10 @@ const roleIcons: { [key: string]: any } = {
               setSelectedSprint(null);
             }}
           />
-        </TabsContent>
+        </div>}
 
         {/* Team Tab */}
-        <TabsContent value="team">
+        {activeTab === "team" && <div>
           <Card>
             <CardHeader>
               <CardTitle>Team Members</CardTitle>
@@ -2155,10 +2162,10 @@ const roleIcons: { [key: string]: any } = {
               )}
             </CardContent>
           </Card>
-        </TabsContent>
+        </div>}
 
         {/* Settings Tab */}
-        <TabsContent value="settings" className="space-y-6">
+        {activeTab === "settings" && <div className="space-y-6">
           {isProjectManager ? (
             <>
               {/* General Settings */}
@@ -2272,10 +2279,10 @@ const roleIcons: { [key: string]: any } = {
               </CardContent>
             </Card>
           )}
-        </TabsContent>
+        </div>}
 
         {/* Analytics Tab */}
-        <TabsContent value="analytics" className="space-y-4">
+        {activeTab === "analytics" && <div className="space-y-4">
           <div className="flex items-center justify-between">
             <div>
               <h3 className="text-lg font-semibold">Analytics</h3>
@@ -2302,10 +2309,10 @@ const roleIcons: { [key: string]: any } = {
               />
             </>
           )}
-        </TabsContent>
+        </div>}
 
         {/* Calendar Tab */}
-        <TabsContent value="calendar" className="space-y-4">
+        {activeTab === "calendar" && <div className="space-y-4">
           {activeTab === "calendar" && (
             <ProjectCalendar
               projectId={projectId}
@@ -2324,20 +2331,20 @@ const roleIcons: { [key: string]: any } = {
               }}
             />
           )}
-        </TabsContent>
+        </div>}
 
         {/* Files Tab */}
-        <TabsContent value="files" className="space-y-4">
+        {activeTab === "files" && <div className="space-y-4">
           {activeTab === "files" && project?.organizations?.id && (
             <ProjectFilesTab
               orgId={project.organizations.id}
               projectId={projectId}
             />
           )}
-        </TabsContent>
+        </div>}
 
         {/* AI Optimizer Tab */}
-        <TabsContent value="ai-optimizer" className="space-y-4">
+        {activeTab === "ai-optimizer" && <div className="space-y-4">
           {activeTab === "ai-optimizer" && (() => {
             const activeSprint = sprints.find((s: any) => s.status === "active") || sprints[0];
             return (
@@ -2348,8 +2355,8 @@ const roleIcons: { [key: string]: any } = {
               />
             );
           })()}
-        </TabsContent>
-      </Tabs>
+        </div>}
+      </div>
 
       {/* Edit Project Dialog */}
       {isProjectManager && (

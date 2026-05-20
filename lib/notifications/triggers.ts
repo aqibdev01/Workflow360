@@ -243,10 +243,9 @@ export async function notifyTaskReferenced(
   await createNotification({
     orgId,
     userId: task.assignee_id,
-    type: "task_assigned", // reuse task type
+    type: "task_assigned",
     title: `${referencedBy.name} referenced your task`,
     body: task.title,
-    link: `/dashboard/organizations/${orgId}/communication/${channelId}`,
     metadata: {
       taskId: task.id,
       taskTitle: task.title,

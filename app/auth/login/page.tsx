@@ -3,7 +3,6 @@
 import { useState, useEffect, useMemo, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import Image from "next/image";
 import { Logo } from "@/components/Logo";
 import { signIn, signInWithOAuth } from "@/lib/auth";
 import { isSupabaseConfigured } from "@/lib/supabase";
@@ -125,18 +124,6 @@ function LoginContent() {
       {/* RIGHT PANEL: Login Form */}
       <section className="w-full lg:w-1/2 flex items-center justify-center p-6 md:p-10 lg:p-14 bg-white dark:bg-slate-900">
         <div className="w-full max-w-md space-y-6">
-          {/* Mobile brand (hidden on desktop) */}
-          <div className="lg:hidden mb-2">
-            <Image
-              src="/workflowlogo.jpeg"
-              alt="Workflow360"
-              width={0}
-              height={0}
-              sizes="180px"
-              style={{ height: "44px", width: "auto" }}
-              priority
-            />
-          </div>
 
           {/* Header */}
           <div className="text-left space-y-1">

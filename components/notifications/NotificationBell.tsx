@@ -153,7 +153,9 @@ export function NotificationBell({ orgId }: NotificationBellProps) {
     }
     setOpen(false);
     if (n.link) {
-      router.push(n.link);
+      // Use a full page navigation so searchParams are always fresh on the destination page.
+      // router.push can serve a stale router-cache entry with wrong searchParams.
+      window.location.href = n.link;
     }
   };
 
