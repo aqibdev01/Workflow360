@@ -3,7 +3,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import Image from "next/image";
 import { Logo } from "@/components/Logo";
 import { signUp } from "@/lib/auth";
 import { isSupabaseConfigured } from "@/lib/supabase";
@@ -176,18 +175,6 @@ export default function SignupPage() {
       <section className="w-full lg:w-1/2 overflow-y-auto bg-white dark:bg-slate-900">
         <div className="min-h-full flex items-center justify-center p-6 md:p-12 lg:p-16">
         <div className="w-full max-w-md space-y-8">
-          {/* Mobile brand */}
-          <div className="lg:hidden mb-4">
-            <Image
-              src="/workflowlogo.jpeg"
-              alt="Workflow360"
-              width={0}
-              height={0}
-              sizes="180px"
-              style={{ height: "44px", width: "auto" }}
-              priority
-            />
-          </div>
 
           <div className="text-left space-y-2">
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-violet-100 dark:bg-violet-900/30 mb-2">

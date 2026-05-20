@@ -153,7 +153,9 @@ export function NotificationBell({ orgId }: NotificationBellProps) {
     }
     setOpen(false);
     if (n.link) {
-      router.push(n.link);
+      // Use a full page navigation so searchParams are always fresh on the destination page.
+      // router.push can serve a stale router-cache entry with wrong searchParams.
+      window.location.href = n.link;
     }
   };
 
@@ -244,20 +246,22 @@ export function NotificationBell({ orgId }: NotificationBellProps) {
           )}
         </div>
 
-        {/* Footer */}
-        {orgId && (
-          <div className="border-t">
-            <button
-              onClick={() => {
-                setOpen(false);
+        {/* Footer — always visible */}
+        <div className="border-t">
+          <button
+            onClick={() => {
+              setOpen(false);
+              if (orgId) {
                 router.push(`/dashboard/organizations/${orgId}/notifications`);
-              }}
-              className="w-full py-2.5 text-xs font-medium text-indigo-600 hover:bg-muted/50 transition-colors"
-            >
-              View all notifications
-            </button>
-          </div>
-        )}
+              } else {
+                router.push("/dashboard/organizations");
+              }
+            }}
+            className="w-full py-2.5 text-xs font-medium text-indigo-600 hover:bg-muted/50 transition-colors"
+          >
+            View all notifications
+          </button>
+        </div>
       </PopoverContent>
     </Popover>
   );

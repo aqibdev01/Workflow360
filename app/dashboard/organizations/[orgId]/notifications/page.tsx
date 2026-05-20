@@ -27,6 +27,11 @@ import {
 } from "@/lib/notifications/notifications";
 import { useBreadcrumbs } from "@/components/breadcrumbs";
 
+const NOTIFICATIONS_BREADCRUMBS = [
+  { label: "Dashboard", href: "/dashboard" },
+  { label: "Notifications" },
+];
+
 // ── Constants ───────────────────────────────────────────────────────────────
 
 const typeIcons: Record<string, React.ElementType> = {
@@ -107,15 +112,7 @@ export default function NotificationsPage() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const loaderRef = useRef<HTMLDivElement>(null);
 
-  const { setBreadcrumbs } = useBreadcrumbs();
-
-  useEffect(() => {
-    setBreadcrumbs([
-      { label: "Dashboard", href: "/dashboard" },
-      { label: "Notifications" },
-    ]);
-    return () => setBreadcrumbs([]);
-  }, [setBreadcrumbs]);
+  useBreadcrumbs(NOTIFICATIONS_BREADCRUMBS);
 
   // ── Data fetching ─────────────────────────────────────────────────────
 
@@ -123,25 +120,20 @@ export default function NotificationsPage() {
     async (pageNum: number, append = false) => {
       try {
         setIsLoading(true);
+        const allowedTypes = filterTypeMap[filter];
         const result = await getNotifications(orgId, {
           unreadOnly: filter === "unread",
+          types: allowedTypes ?? undefined,
           page: pageNum,
           pageSize: 30,
         });
 
-        let items = result.notifications;
-
-        // Client-side type filter
-        const allowedTypes = filterTypeMap[filter];
-        if (allowedTypes) {
-          items = items.filter((n) => allowedTypes.includes(n.type));
-        }
-
         if (append) {
-          setNotifications((prev) => [...prev, ...items]);
+          setNotifications((prev) => [...prev, ...result.notifications]);
         } else {
-          setNotifications(items);
+          setNotifications(result.notifications);
         }
+        // hasMore is accurate because filtering now happens on the server
         setHasMore(result.notifications.length === 30);
       } catch (err) {
         console.error("Failed to load notifications:", err);
@@ -245,10 +237,6 @@ export default function NotificationsPage() {
     setSelected(new Set());
   };
 
-  // ── Filtered list ─────────────────────────────────────────────────────
-
-  const filteredNotifications = notifications;
-
   // ── Render ────────────────────────────────────────────────────────────
 
   return (
@@ -328,7 +316,7 @@ export default function NotificationsPage() {
 
       {/* Notification list */}
       <div className="rounded-xl border bg-white shadow-sm overflow-hidden divide-y">
-        {filteredNotifications.length === 0 && !isLoading ? (
+        {notifications.length === 0 && !isLoading ? (
           <div className="flex flex-col items-center justify-center py-16 text-center">
             <Bell className="h-12 w-12 text-muted-foreground/20 mb-4" />
             <p className="text-lg font-medium text-muted-foreground">
@@ -339,7 +327,7 @@ export default function NotificationsPage() {
             </p>
           </div>
         ) : (
-          filteredNotifications.map((n) => {
+          notifications.map((n) => {
             const Icon = typeIcons[n.type] || Zap;
             const colorClasses = typeColors[n.type] || "text-gray-500 bg-gray-50";
             const isSelected = selected.has(n.id);

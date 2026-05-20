@@ -34,13 +34,21 @@ export interface Notification {
 // =====================================================
 
 /**
- * Get notifications for current user in an org, paginated, newest first.
+ * Get notifications for the current user.
+ * When orgId is provided, results are scoped to that org.
+ * When orgId is null/undefined, all notifications across every org are returned
+ * (used by the global bell on pages with no org context, e.g. /dashboard).
  */
 export async function getNotifications(
-  orgId: string,
-  options: { unreadOnly?: boolean; page?: number; pageSize?: number } = {}
+  orgId: string | null,
+  options: {
+    unreadOnly?: boolean;
+    types?: NotificationType[];
+    page?: number;
+    pageSize?: number;
+  } = {}
 ): Promise<{ notifications: Notification[]; total: number }> {
-  const { unreadOnly = false, page = 1, pageSize = 30 } = options;
+  const { unreadOnly = false, types, page = 1, pageSize = 30 } = options;
 
   const {
     data: { user },
@@ -54,12 +62,19 @@ export async function getNotifications(
     .from("notifications")
     .select("*", { count: "exact" })
     .eq("user_id", user.id)
-    .eq("organization_id", orgId)
     .order("created_at", { ascending: false })
     .range(from, to);
 
+  if (orgId) {
+    query = query.eq("organization_id", orgId);
+  }
+
   if (unreadOnly) {
     query = query.eq("is_read", false);
+  }
+
+  if (types && types.length > 0) {
+    query = query.in("type", types);
   }
 
   const { data, error, count } = await query;
@@ -117,21 +132,27 @@ export async function markNotificationRead(
 }
 
 /**
- * Mark all notifications as read for the current user in an org.
+ * Mark all notifications as read for the current user.
+ * When orgId is provided, only that org's notifications are marked.
+ * When null, all notifications across every org are marked.
  */
-export async function markAllNotificationsRead(orgId: string): Promise<void> {
+export async function markAllNotificationsRead(orgId: string | null): Promise<void> {
   const {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) throw new Error("Not authenticated");
 
-  const { error } = await (supabase as any)
+  let query = (supabase as any)
     .from("notifications")
     .update({ is_read: true, read_at: new Date().toISOString() })
     .eq("user_id", user.id)
-    .eq("organization_id", orgId)
     .eq("is_read", false);
 
+  if (orgId) {
+    query = query.eq("organization_id", orgId);
+  }
+
+  const { error } = await query;
   if (error) throw error;
 }
 
@@ -152,7 +173,7 @@ export async function createNotification(data: {
   link?: string;
   metadata?: Record<string, any>;
 }): Promise<Notification> {
-  const { error } = await (supabase as any)
+  const { data: rows, error } = await (supabase as any)
     .from("notifications")
     .insert({
       organization_id: data.orgId,
@@ -162,10 +183,12 @@ export async function createNotification(data: {
       body: data.body,
       link: data.link || null,
       metadata: data.metadata || null,
-    });
+    })
+    .select()
+    .single();
 
   if (error) throw error;
-  return { user_id: data.userId, type: data.type, title: data.title } as any;
+  return rows as Notification;
 }
 
 // =====================================================
@@ -178,10 +201,16 @@ export async function createNotification(data: {
 export async function deleteNotification(
   notificationId: string
 ): Promise<void> {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
+
   const { error } = await (supabase as any)
     .from("notifications")
     .delete()
-    .eq("id", notificationId);
+    .eq("id", notificationId)
+    .eq("user_id", user.id);
 
   if (error) throw error;
 }

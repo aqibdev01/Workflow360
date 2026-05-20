@@ -25,10 +25,9 @@ export function useNotifications(orgId: string | null) {
   // ── Fetch initial data ──────────────────────────────────────────────────
 
   const refresh = useCallback(async () => {
-    if (!orgId) return;
-
     setIsLoading(true);
     try {
+      // orgId null → fetch across all orgs (global bell on /dashboard)
       const result = await getNotifications(orgId, { page: 1 });
       setNotifications(result.notifications);
     } catch (err) {
@@ -41,11 +40,8 @@ export function useNotifications(orgId: string | null) {
   // ── Realtime subscription ───────────────────────────────────────────────
 
   useEffect(() => {
-    if (!orgId) return;
-
     refresh();
 
-    // Get current user for filter
     supabase.auth.getUser().then(({ data: { user } }) => {
       if (!user) return;
 
@@ -62,13 +58,11 @@ export function useNotifications(orgId: string | null) {
           (payload: any) => {
             const newNotification = payload.new as Notification;
 
-            // Only include if it belongs to the current org
-            if (newNotification.organization_id !== orgId) return;
+            // When scoped to an org, ignore notifications from other orgs
+            if (orgId && newNotification.organization_id !== orgId) return;
 
             setNotifications((prev) => [newNotification, ...prev]);
-            // unreadCount is derived from notifications — no manual increment needed
 
-            // Show toast
             toast(newNotification.title, {
               description: newNotification.body || undefined,
               action: newNotification.link
@@ -92,7 +86,7 @@ export function useNotifications(orgId: string | null) {
           },
           (payload: any) => {
             const updated = payload.new as Notification;
-            if (updated.organization_id !== orgId) return;
+            if (orgId && updated.organization_id !== orgId) return;
 
             setNotifications((prev) =>
               prev.map((n) => (n.id === updated.id ? updated : n))
@@ -131,7 +125,6 @@ export function useNotifications(orgId: string | null) {
 
   const markRead = useCallback(
     async (notificationId: string) => {
-      // Optimistic update so the UI responds immediately
       setNotifications((prev) =>
         prev.map((n) =>
           n.id === notificationId
@@ -142,7 +135,6 @@ export function useNotifications(orgId: string | null) {
       try {
         await markNotificationRead(notificationId);
       } catch (err) {
-        // Roll back optimistic update on failure
         setNotifications((prev) =>
           prev.map((n) =>
             n.id === notificationId ? { ...n, is_read: false, read_at: null } : n
@@ -155,17 +147,14 @@ export function useNotifications(orgId: string | null) {
   );
 
   const markAllRead = useCallback(async () => {
-    if (!orgId) return;
-
     const now = new Date().toISOString();
-    // Optimistic update
     setNotifications((prev) =>
       prev.map((n) => ({ ...n, is_read: true, read_at: n.read_at || now }))
     );
     try {
+      // orgId null → marks all orgs' notifications as read
       await markAllNotificationsRead(orgId);
     } catch (err) {
-      // Re-fetch to restore correct state on failure
       refresh();
       console.error("Error marking all notifications read:", err);
     }
@@ -173,12 +162,10 @@ export function useNotifications(orgId: string | null) {
 
   const deleteNotification = useCallback(
     async (notificationId: string) => {
-      // Optimistic removal
       setNotifications((prev) => prev.filter((n) => n.id !== notificationId));
       try {
         await deleteNotificationFn(notificationId);
       } catch (err) {
-        // Re-fetch to restore on failure
         refresh();
         console.error("Error deleting notification:", err);
       }
